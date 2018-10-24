@@ -10,10 +10,11 @@
 #define STBI_MSC_SECURE_CRT
 #include "stb_image_write.h"
 
-#define TEST_IMAGE_SIZE() 128 // in pixels, on each axis
-#define NUM_SAMPLES() 100
+#include "image.h"
 
-static const float c_pi = 3.14159265359f;
+#define TEST_IMAGE_SIZE() 128 // in pixels, on each axis
+#define SAMPLE_IMAGE_SIZE() 1024
+#define NUM_SAMPLES() 100
 
 static const float c_referenceValue_Disk = 0.5f;
 static const float c_referenceValue_Triangle = 0.5f;
@@ -21,6 +22,7 @@ static const float c_referenceValue_Step = 1.0f / c_pi;
 static const float c_referenceValue_Gaussian = c_pi / 4.0f * (float)erf(1.0) * (float)erf(1.0);
 static const float c_referenceValue_Bilinear = 0.25f;
 
+// generalized golden ratio, for making 2d low discrepancy sequences
 // http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
 static const float c_goldenRatio2 = 1.32471795724474602596f;
 
@@ -278,6 +280,21 @@ void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoi
 {
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
+    static const size_t c_numScores = (1 << 2) - 1;
+    Vec2 axisMasks[c_numScores];
+    for (size_t i = 1; i <= c_numScores; ++i)
+    {
+        Vec2& axisMask = axisMasks[i - 1];
+
+        for (size_t j = 0; j < 2; ++j)
+        {
+            if (i & (size_t(1) << j))
+                axisMask[j] = 1.0f;
+            else
+                axisMask[j] = 0.0f;
+        }
+    }
+
     GoodCandidateAlgorithm(
         points,
         numPoints,
@@ -291,9 +308,7 @@ void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoi
         },
         [&](const Vec2& A, const Vec2& B, size_t scoreIndex)
         {
-            Vec2 axisMask;
-            axisMask[0] = (scoreIndex & 1) ? 1.0f : 0.0f;
-            axisMask[1] = (scoreIndex & 2) ? 1.0f : 0.0f;
+            const Vec2& axisMask = axisMasks[scoreIndex];
 
             float distSq = 0.0f;
             for (int i = 0; i < 2; ++i)
@@ -365,11 +380,67 @@ void Integrate(const T& SampleImage, const std::vector<Vec2>& points, float refe
     }
 }
 
-void DoTest2D (const GeneratePoints& generatePoints, Log& log)
+void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label)
 {
     // generate the sample points
     std::vector<Vec2> points;
     generatePoints(points, NUM_SAMPLES());
+
+    // TODO: move to a function
+    // TODO: rename things to make sense, like "imageBottom" == ??
+    // TODO: DFT point samples
+    // Save the sample points as an image
+    {
+        // draw the footer - show the angle and offset distribution on a number line
+        Image imageBottom(SAMPLE_IMAGE_SIZE(), SAMPLE_IMAGE_SIZE());
+        Image imageSamples(50, 50);  // TODO: make this be a #define at the top for how large it is
+        ImageComplex imageSamplesDFTComplex(imageSamples.m_width, imageSamples.m_height);
+
+        int graphSize = int(float(SAMPLE_IMAGE_SIZE()) * 0.7f);
+        int padding = (SAMPLE_IMAGE_SIZE() - graphSize) / 2;
+
+        DrawLine(imageBottom, padding, padding, padding + graphSize, padding, 128, 128, 255);
+        DrawLine(imageBottom, padding, padding + graphSize, padding + graphSize, padding + graphSize, 128, 128, 255);
+
+        DrawLine(imageBottom, padding, padding, padding, padding + graphSize, 128, 128, 255);
+        DrawLine(imageBottom, padding + graphSize, padding, padding + graphSize, padding + graphSize, 128, 128, 255);
+
+        for (int sampleIndex = 0; sampleIndex < NUM_SAMPLES(); ++sampleIndex)
+        {
+            const Vec2& v = points[sampleIndex];
+            float percent = float(sampleIndex) / float(NUM_SAMPLES() - 1);
+            uint8 color = uint8(255.0f * percent);
+
+            int dotX = padding + int(v[0] * float(graphSize));
+
+            int dotY = padding + int(v[1] * float(graphSize));
+
+            // draw the 2d dots
+            DrawCircle(imageBottom, dotX, dotY, 2, 0, color, 0);
+
+            // draw the 1d angle dots to the right
+            DrawCircle(imageBottom, padding + graphSize + padding / 2, dotY, 2, 0, color, 0);
+
+            // draw the 1d offset dots below
+            DrawCircle(imageBottom, dotX, padding + graphSize + padding / 2, 2, 0, color, 0);
+
+            // make the sample image
+            {
+                int x = int(v[0] * float(imageSamples.m_width - 1) + 0.5f);
+                int y = int(v[1] * float(imageSamples.m_height - 1) + 0.5f);
+                uint8* imageSamplePixel = &imageSamples.m_pixels[(y*imageSamples.m_width + x) * 4];
+                imageSamplePixel[0] = 0;
+                imageSamplePixel[1] = 0;
+                imageSamplePixel[2] = 0;
+                imageSamplePixel[3] = 255;
+            }
+        }
+
+        // save the images
+        char fileName[256];
+        sprintf_s(fileName, "out/samples_%s.png", label);
+        SaveImage(fileName, imageBottom);
+    }
 
     // test the sample points for integration
     Integrate(SampleImage_Disk, points, c_referenceValue_Disk, log[0]);
@@ -401,30 +472,28 @@ int main(int argc, char **argv)
     }
 
     // make images of the functions we are integrating
-    MakeSampleImage(SampleImage_Disk, "out/disk.png");
-    MakeSampleImage(SampleImage_Triangle, "out/triangle.png");
-    MakeSampleImage(SampleImage_Step, "out/step.png");
-    MakeSampleImage(SampleImage_Gaussian, "out/gaussian.png");
-    MakeSampleImage(SampleImage_Bilinear, "out/bilinear.png");
+    MakeSampleImage(SampleImage_Disk, "out/int_disk.png");
+    MakeSampleImage(SampleImage_Triangle, "out/int_triangle.png");
+    MakeSampleImage(SampleImage_Step, "out/int_step.png");
+    MakeSampleImage(SampleImage_Gaussian, "out/int_gaussian.png");
+    MakeSampleImage(SampleImage_Bilinear, "out/int_bilinear.png");
 
     // do the tests for each type of sampling
     printf("White Noise...\n");
-    DoTest2D(GeneratePoints_WhiteNoise, log);
+    DoTest2D(GeneratePoints_WhiteNoise, log, "white");
     printf("Golden Ratio...\n");
-    DoTest2D(GeneratePoints_GoldenRatio, log);
+    DoTest2D(GeneratePoints_GoldenRatio, log, "golden");
     printf("Blue Noise...\n");
-    DoTest2D(GeneratePoints_BlueNoise, log);
+    DoTest2D(GeneratePoints_BlueNoise, log, "blue");
     printf("Projective Blue Noise...\n");
-    DoTest2D(GeneratePoints_ProjectiveBlueNoise, log);
+    DoTest2D(GeneratePoints_ProjectiveBlueNoise, log, "projblue");
 
     // write out the logs
-    WriteLog(log[0], "out/disk.csv");
-    WriteLog(log[1], "out/triangle.csv");
-    WriteLog(log[2], "out/step.csv");
-    WriteLog(log[3], "out/gaussian.csv");
-    WriteLog(log[4], "out/bilinear.csv");
-
-    system("pause");
+    WriteLog(log[0], "out/data_disk.csv");
+    WriteLog(log[1], "out/data_triangle.csv");
+    WriteLog(log[2], "out/data_step.csv");
+    WriteLog(log[3], "out/data_gaussian.csv");
+    WriteLog(log[4], "out/data_bilinear.csv");
 
     return 0;
 }
@@ -433,10 +502,14 @@ int main(int argc, char **argv)
 
 TODO:
 
-* show sampling patterns as images
+* expand the sampling box out a little bit so points don't overlap it!
+* dft sampling patterns - how?
+
 
 * the multijitter paper did 10,000 samples. that is going to be super slow for blue noise and projective blue noise.
  * could maybe do a grid or go multithreaded or something?
+
+
 
 ----- Good Candidate algorithm -----
 
