@@ -502,6 +502,9 @@ int main(int argc, char **argv)
 
 TODO:
 
+* generalized golden ratio isn't doing that well for integration seemingly. why not, are you doing it right?
+* need more sampling patterns. especially LDS if golden ratio is going to suck it up.
+* it could be nice if you made the graphs automatically. they are kind of a pain in open office, and don't look like I want.
 * expand the sampling box out a little bit so points don't overlap it!
 * dft sampling patterns - how?
 
