@@ -431,6 +431,13 @@ int main(int argc, char **argv)
 
 /*
 
+TODO:
+
+* show sampling patterns as images
+
+* the multijitter paper did 10,000 samples. that is going to be super slow for blue noise and projective blue noise.
+ * could maybe do a grid or go multithreaded or something?
+
 ----- Good Candidate algorithm -----
 
 co-author with brandon!
