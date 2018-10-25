@@ -14,6 +14,7 @@
 
 #define TEST_IMAGE_SIZE() 128 // in pixels, on each axis
 #define SAMPLE_IMAGE_SIZE() 1024
+#define GRAPH_IMAGE_SIZE() 1024
 #define NUM_SAMPLES() 100
 
 static const float c_referenceValue_Disk = 0.5f;
@@ -31,6 +32,7 @@ typedef std::array<float, 2> Vec2;
 struct Log
 {
     std::array<std::vector<std::string>, 5> logs;
+    std::array<std::array<std::vector<float>, 5>, 4> errors;  // indexed by: [sampleType][test]
 };
 
 typedef uint8_t uint8;
@@ -301,7 +303,7 @@ void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoi
     GoodCandidateAlgorithm(
         points,
         numPoints,
-        20,
+        100,
         [&]()
         {
             Vec2 ret;
@@ -369,7 +371,7 @@ void LogLineAppend(std::vector<std::string>& logLines, int lineNumber, const cha
 }
 
 template <typename T>
-void Integrate(const T& SampleImage, const std::vector<Vec2>& points, float reference, std::vector<std::string>& logLines)
+void Integrate(const T& SampleImage, const std::vector<Vec2>& points, float reference, std::vector<std::string>& logLines, std::vector<float>& errors)
 {
     float result = 0.0f;
     for (int i = 0; i < points.size(); ++i)
@@ -377,6 +379,7 @@ void Integrate(const T& SampleImage, const std::vector<Vec2>& points, float refe
         float sample = SampleImage(points[i]);
         result = Lerp(result, sample, 1.0f / float(i + 1));
         LogLineAppend(logLines, i + 1, ",\"%f\"", fabsf(result - reference));
+        errors.push_back(fabsf(result - reference));
     }
 }
 
@@ -443,7 +446,7 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
     }
 }
 
-void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label)
+void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
 {
     // generate the sample points and save them as an image
     std::vector<Vec2> points;
@@ -453,11 +456,88 @@ void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label
     // TODO: DFT point samples
 
     // test the sample points for integration
-    Integrate(SampleImage_Disk, points, c_referenceValue_Disk, log.logs[0]);
-    Integrate(SampleImage_Triangle, points, c_referenceValue_Triangle, log.logs[1]);
-    Integrate(SampleImage_Step, points, c_referenceValue_Step, log.logs[2]);
-    Integrate(SampleImage_Gaussian, points, c_referenceValue_Gaussian, log.logs[3]);
-    Integrate(SampleImage_Bilinear, points, c_referenceValue_Bilinear, log.logs[4]);
+    Integrate(SampleImage_Disk, points, c_referenceValue_Disk, log.logs[0], log.errors[noiseType][0]);
+    Integrate(SampleImage_Triangle, points, c_referenceValue_Triangle, log.logs[1], log.errors[noiseType][1]);
+    Integrate(SampleImage_Step, points, c_referenceValue_Step, log.logs[2], log.errors[noiseType][2]);
+    Integrate(SampleImage_Gaussian, points, c_referenceValue_Gaussian, log.logs[3], log.errors[noiseType][3]);
+    Integrate(SampleImage_Bilinear, points, c_referenceValue_Bilinear, log.logs[4], log.errors[noiseType][4]);
+}
+
+void MakeErrorGraph(const Log& log, int test, const char* fileName)
+{
+    Image image(GRAPH_IMAGE_SIZE(), GRAPH_IMAGE_SIZE());
+    ClearImage(image, 224, 224, 224);
+
+    // get the x axis min and max
+    float xAxisMin = log10f(1.0f);
+    float xAxisMax = ceilf(log10f(float(NUM_SAMPLES())));
+
+    // get the y axis min and max
+    float yAxisMin = log.errors[0][test][0];
+    float yAxisMax = yAxisMin;
+    for (auto& a : log.errors)
+    {
+        for (auto& b : a[test])
+        {
+            yAxisMin = std::min(yAxisMin, b);
+            yAxisMax = std::max(yAxisMax, b);
+        }
+    }
+    yAxisMin = std::max(yAxisMin, 0.00001f);
+    yAxisMin = log10f(yAxisMin);
+    yAxisMax = log10f(yAxisMax);
+
+    // draw the graph
+    uint8 colors[4][3] = 
+    {
+        {255, 0, 0},
+        {0, 255, 0},
+        {0, 0, 255},
+        {0, 255, 255},
+    };
+
+    for (int sampleType = 0; sampleType < log.errors.size(); ++sampleType)
+    {
+        uint8 lineColor = uint8(255.0f * float(sampleType) / float(log.errors.size()));
+
+        bool firstPoint = true;
+        Vec2 lastUV;
+        for (int sampleIndex = 0; sampleIndex < NUM_SAMPLES(); ++sampleIndex)
+        {
+            float logSample = log10f(float(sampleIndex+1));
+            float logError = log.errors[sampleType][test][sampleIndex] > 0.0f ? log10f(log.errors[sampleType][test][sampleIndex]) : yAxisMin;
+
+            Vec2 uv;
+            uv[0] = (logSample - xAxisMin) / (xAxisMax - xAxisMin);
+            uv[1] = (logError - yAxisMin) / (yAxisMax - yAxisMin);
+
+            // we want y=0 to be at the bottom of the image
+            uv[1] = 1.0f - uv[1];
+
+            if (firstPoint)
+            {
+                firstPoint = false;
+            }
+            else
+            {
+                // TODO: make the drawing functions work in uv's?
+                int x1 = int(0.5f + lastUV[0] * float(GRAPH_IMAGE_SIZE()));
+                int y1 = int(0.5f + lastUV[1] * float(GRAPH_IMAGE_SIZE()));
+                int x2 = int(0.5f + uv[0] * float(GRAPH_IMAGE_SIZE()));
+                int y2 = int(0.5f + uv[1] * float(GRAPH_IMAGE_SIZE()));
+                DrawLine(image, x1, y1, x2, y2, colors[sampleType][0], colors[sampleType][1], colors[sampleType][2]);
+            }
+            lastUV = uv;
+        }
+    }
+
+    // TODO: make legend somehow. maybe a source image that gets loaded and slapped on/
+
+    // TODO: draw axis loglines?
+
+    // TODO: use golden ratio to come up with colors for each noise type based on noise index?
+
+    SaveImage(fileName, image);
 }
 
 void WriteLog(std::vector<std::string>& log, const char* fileName)
@@ -490,13 +570,20 @@ int main(int argc, char **argv)
 
     // do the tests for each type of sampling
     printf("White Noise...\n");
-    DoTest2D(GeneratePoints_WhiteNoise, log, "white");
+    DoTest2D(GeneratePoints_WhiteNoise, log, "white", 0);
     printf("Golden Ratio...\n");
-    DoTest2D(GeneratePoints_GoldenRatio, log, "golden");
+    DoTest2D(GeneratePoints_GoldenRatio, log, "golden", 1);
     printf("Blue Noise...\n");
-    DoTest2D(GeneratePoints_BlueNoise, log, "blue");
+    DoTest2D(GeneratePoints_BlueNoise, log, "blue", 2);
     printf("Projective Blue Noise...\n");
-    DoTest2D(GeneratePoints_ProjectiveBlueNoise, log, "projblue");
+    DoTest2D(GeneratePoints_ProjectiveBlueNoise, log, "projblue", 3);
+
+    // make error graphs
+    MakeErrorGraph(log, 0, "out/error_disk.png");
+    MakeErrorGraph(log, 1, "out/error_triangle.png");
+    MakeErrorGraph(log, 2, "out/error_step.png");
+    MakeErrorGraph(log, 3, "out/error_gaussian.png");
+    MakeErrorGraph(log, 4, "out/error_bilinear.png");
 
     // write out the logs
     WriteLog(log.logs[0], "out/data_disk.csv");
@@ -511,6 +598,9 @@ int main(int argc, char **argv)
 /*
 
 TODO:
+
+* the graphs should have the standard error rate decrease lines too like sqrt(N) etc.
+* make the graph have a border and tick marks / axis marks and a legend somehow.
 
 * todos
 * generalized golden ratio isn't doing that well for integration seemingly. why not, are you doing it right?
