@@ -556,9 +556,9 @@ int main(int argc, char **argv)
     Log log;
     for (auto& l : log.logs)
     {
-        LogLineAppend(l, 0, "\"Sample\",\"White Noise\",\"Golden Ratio\",\"Blue Noise\",\"Projective Blue Noise\"");
+        LogLineAppend(l, 0, "\"Sample\",\"1/sqrt(N)\",\"White Noise\",\"Golden Ratio\",\"Blue Noise\",\"Projective Blue Noise\"");
         for (int i = NUM_SAMPLES(); i > 0; --i)
-            LogLineAppend(l, i, "\"%i\"", i);
+            LogLineAppend(l, i, "\"%i\",\"%f\"", i, 1.0f / sqrtf(float(i)));
     }
 
     // make images of the functions we are integrating
