@@ -28,7 +28,10 @@ static const float c_goldenRatio2 = 1.32471795724474602596f;
 
 typedef std::array<float, 2> Vec2;
 
-typedef std::array<std::vector<std::string>, 5> Log;
+struct Log
+{
+    std::array<std::vector<std::string>, 5> logs;
+};
 
 typedef uint8_t uint8;
 
@@ -373,81 +376,88 @@ void Integrate(const T& SampleImage, const std::vector<Vec2>& points, float refe
     {
         float sample = SampleImage(points[i]);
         result = Lerp(result, sample, 1.0f / float(i + 1));
-
-        // TODO: more data, and log error / index?
         LogLineAppend(logLines, i + 1, ",\"%f\"", fabsf(result - reference));
-        //fprintf(csvFile, "\"%i\",\"%f\",\"%f\",\"%f\"\n", i, log10f(float(i+1)), result, fabsf(result-reference));
+    }
+}
+
+void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
+{
+    // draw the footer - show the angle and offset distribution on a number line
+    Image image(SAMPLE_IMAGE_SIZE(), SAMPLE_IMAGE_SIZE());
+    Image imageSamples(50, 50);  // TODO: make this be a #define at the top for how large it is
+    ImageComplex imageSamplesDFTComplex(imageSamples.m_width, imageSamples.m_height);
+
+    int graphSize = int(float(SAMPLE_IMAGE_SIZE()) * 0.7f);
+    int padding = (SAMPLE_IMAGE_SIZE() - graphSize) / 2;
+
+    DrawLine(image, padding, padding, padding + graphSize, padding, 128, 128, 255);
+    DrawLine(image, padding, padding + graphSize, padding + graphSize, padding + graphSize, 128, 128, 255);
+
+    DrawLine(image, padding, padding, padding, padding + graphSize, 128, 128, 255);
+    DrawLine(image, padding + graphSize, padding, padding + graphSize, padding + graphSize, 128, 128, 255);
+
+    for (int sampleIndex = 0; sampleIndex < NUM_SAMPLES(); ++sampleIndex)
+    {
+        const Vec2& v = points[sampleIndex];
+        float percent = float(sampleIndex) / float(NUM_SAMPLES() - 1);
+        uint8 color = uint8(255.0f * percent);
+
+        int dotX = padding + int(v[0] * float(graphSize));
+
+        int dotY = padding + int(v[1] * float(graphSize));
+
+        // draw the 2d dots
+        DrawCircle(image, dotX, dotY, 2, 0, color, 0);
+
+        // draw the 1d angle dots to the right
+        DrawCircle(image, padding + graphSize + padding / 2, dotY, 2, 0, color, 0);
+
+        // draw the 1d offset dots below
+        DrawCircle(image, dotX, padding + graphSize + padding / 2, 2, 0, color, 0);
+
+        // make the sample image
+        {
+            int x = int(v[0] * float(imageSamples.m_width - 1) + 0.5f);
+            int y = int(v[1] * float(imageSamples.m_height - 1) + 0.5f);
+            uint8* imageSamplePixel = &imageSamples.m_pixels[(y*imageSamples.m_width + x) * 4];
+            imageSamplePixel[0] = 0;
+            imageSamplePixel[1] = 0;
+            imageSamplePixel[2] = 0;
+            imageSamplePixel[3] = 255;
+        }
+    }
+
+    // save the images
+    char fileName[256];
+    sprintf_s(fileName, "out/samples_%s.png", label);
+    SaveImage(fileName, image);
+
+    // also write the samples out as a csv
+    {
+        FILE* file = nullptr;
+        sprintf_s(fileName, "out/samplescsv_%s.csv", label);
+        fopen_s(&file, fileName, "w+t");
+        for (const Vec2& v : points)
+            fprintf(file, "\"%f\",\"%f\"\n", v[0], v[1]);
+        fclose(file);
     }
 }
 
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label)
 {
-    // generate the sample points
+    // generate the sample points and save them as an image
     std::vector<Vec2> points;
     generatePoints(points, NUM_SAMPLES());
+    MakeSamplesImage(points, label);
 
-    // TODO: move to a function
-    // TODO: rename things to make sense, like "imageBottom" == ??
     // TODO: DFT point samples
-    // Save the sample points as an image
-    {
-        // draw the footer - show the angle and offset distribution on a number line
-        Image imageBottom(SAMPLE_IMAGE_SIZE(), SAMPLE_IMAGE_SIZE());
-        Image imageSamples(50, 50);  // TODO: make this be a #define at the top for how large it is
-        ImageComplex imageSamplesDFTComplex(imageSamples.m_width, imageSamples.m_height);
-
-        int graphSize = int(float(SAMPLE_IMAGE_SIZE()) * 0.7f);
-        int padding = (SAMPLE_IMAGE_SIZE() - graphSize) / 2;
-
-        DrawLine(imageBottom, padding, padding, padding + graphSize, padding, 128, 128, 255);
-        DrawLine(imageBottom, padding, padding + graphSize, padding + graphSize, padding + graphSize, 128, 128, 255);
-
-        DrawLine(imageBottom, padding, padding, padding, padding + graphSize, 128, 128, 255);
-        DrawLine(imageBottom, padding + graphSize, padding, padding + graphSize, padding + graphSize, 128, 128, 255);
-
-        for (int sampleIndex = 0; sampleIndex < NUM_SAMPLES(); ++sampleIndex)
-        {
-            const Vec2& v = points[sampleIndex];
-            float percent = float(sampleIndex) / float(NUM_SAMPLES() - 1);
-            uint8 color = uint8(255.0f * percent);
-
-            int dotX = padding + int(v[0] * float(graphSize));
-
-            int dotY = padding + int(v[1] * float(graphSize));
-
-            // draw the 2d dots
-            DrawCircle(imageBottom, dotX, dotY, 2, 0, color, 0);
-
-            // draw the 1d angle dots to the right
-            DrawCircle(imageBottom, padding + graphSize + padding / 2, dotY, 2, 0, color, 0);
-
-            // draw the 1d offset dots below
-            DrawCircle(imageBottom, dotX, padding + graphSize + padding / 2, 2, 0, color, 0);
-
-            // make the sample image
-            {
-                int x = int(v[0] * float(imageSamples.m_width - 1) + 0.5f);
-                int y = int(v[1] * float(imageSamples.m_height - 1) + 0.5f);
-                uint8* imageSamplePixel = &imageSamples.m_pixels[(y*imageSamples.m_width + x) * 4];
-                imageSamplePixel[0] = 0;
-                imageSamplePixel[1] = 0;
-                imageSamplePixel[2] = 0;
-                imageSamplePixel[3] = 255;
-            }
-        }
-
-        // save the images
-        char fileName[256];
-        sprintf_s(fileName, "out/samples_%s.png", label);
-        SaveImage(fileName, imageBottom);
-    }
 
     // test the sample points for integration
-    Integrate(SampleImage_Disk, points, c_referenceValue_Disk, log[0]);
-    Integrate(SampleImage_Triangle, points, c_referenceValue_Triangle, log[1]);
-    Integrate(SampleImage_Step, points, c_referenceValue_Step, log[2]);
-    Integrate(SampleImage_Gaussian, points, c_referenceValue_Gaussian, log[3]);
-    Integrate(SampleImage_Bilinear, points, c_referenceValue_Bilinear, log[4]);
+    Integrate(SampleImage_Disk, points, c_referenceValue_Disk, log.logs[0]);
+    Integrate(SampleImage_Triangle, points, c_referenceValue_Triangle, log.logs[1]);
+    Integrate(SampleImage_Step, points, c_referenceValue_Step, log.logs[2]);
+    Integrate(SampleImage_Gaussian, points, c_referenceValue_Gaussian, log.logs[3]);
+    Integrate(SampleImage_Bilinear, points, c_referenceValue_Bilinear, log.logs[4]);
 }
 
 void WriteLog(std::vector<std::string>& log, const char* fileName)
@@ -464,7 +474,7 @@ int main(int argc, char **argv)
 {
     // set up the logs
     Log log;
-    for (auto& l : log)
+    for (auto& l : log.logs)
     {
         LogLineAppend(l, 0, "\"Sample\",\"White Noise\",\"Golden Ratio\",\"Blue Noise\",\"Projective Blue Noise\"");
         for (int i = NUM_SAMPLES(); i > 0; --i)
@@ -489,11 +499,11 @@ int main(int argc, char **argv)
     DoTest2D(GeneratePoints_ProjectiveBlueNoise, log, "projblue");
 
     // write out the logs
-    WriteLog(log[0], "out/data_disk.csv");
-    WriteLog(log[1], "out/data_triangle.csv");
-    WriteLog(log[2], "out/data_step.csv");
-    WriteLog(log[3], "out/data_gaussian.csv");
-    WriteLog(log[4], "out/data_bilinear.csv");
+    WriteLog(log.logs[0], "out/data_disk.csv");
+    WriteLog(log.logs[1], "out/data_triangle.csv");
+    WriteLog(log.logs[2], "out/data_step.csv");
+    WriteLog(log.logs[3], "out/data_gaussian.csv");
+    WriteLog(log.logs[4], "out/data_bilinear.csv");
 
     return 0;
 }
@@ -502,12 +512,15 @@ int main(int argc, char **argv)
 
 TODO:
 
+* todos
 * generalized golden ratio isn't doing that well for integration seemingly. why not, are you doing it right?
 * need more sampling patterns. especially LDS if golden ratio is going to suck it up.
+ * like owen scrambled sobol
 * it could be nice if you made the graphs automatically. they are kind of a pain in open office, and don't look like I want.
 * expand the sampling box out a little bit so points don't overlap it!
 * dft sampling patterns - how?
 
+* show results to Martin on twitter, see what he says
 
 * the multijitter paper did 10,000 samples. that is going to be super slow for blue noise and projective blue noise.
  * could maybe do a grid or go multithreaded or something?
