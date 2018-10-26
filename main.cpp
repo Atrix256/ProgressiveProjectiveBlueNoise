@@ -16,6 +16,7 @@
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
 #define NUM_SAMPLES() 100
+#define DO_SLOW_SAMPLES() true
 
 static const float c_referenceValue_Disk = 0.5f;
 static const float c_referenceValue_Triangle = 0.5f;
@@ -29,10 +30,16 @@ static const float c_goldenRatio2 = 1.32471795724474602596f;
 
 typedef std::array<float, 2> Vec2;
 
+#if DO_SLOW_SAMPLES()
+static const size_t c_numSampleTypes = 7;
+#else
+static const size_t c_numSampleTypes = 5;
+#endif
+
 struct Log
 {
     std::array<std::vector<std::string>, 5> logs;
-    std::array<std::array<std::vector<float>, 5>, 4> errors;  // indexed by: [sampleType][test]
+    std::array<std::array<std::vector<float>, 5>, c_numSampleTypes> errors;  // indexed by: [sampleType][test]
 };
 
 typedef uint8_t uint8;
@@ -488,12 +495,17 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
     yAxisMax = log10f(yAxisMax);
 
     // draw the graph
-    uint8 colors[4][3] = 
+    uint8 colors[9][3] =
     {
         {255, 0, 0},
         {0, 255, 0},
         {0, 0, 255},
         {0, 255, 255},
+        {255, 0, 255},
+        {255, 255, 0},
+        {128, 0, 0},
+        {0, 128, 0},
+        {0, 0, 128},
     };
 
     for (int sampleType = 0; sampleType < log.errors.size(); ++sampleType)
@@ -556,9 +568,24 @@ int main(int argc, char **argv)
     Log log;
     for (auto& l : log.logs)
     {
-        LogLineAppend(l, 0, "\"Sample\",\"1/sqrt(N)\",\"White Noise\",\"Golden Ratio\",\"Blue Noise\",\"Projective Blue Noise\"");
-        for (int i = NUM_SAMPLES(); i > 0; --i)
-            LogLineAppend(l, i, "\"%i\",\"%f\"", i, 1.0f / sqrtf(float(i)));
+        LogLineAppend(l, 0, "\"Sample\",\"N^-0.5\",\"N^-0.75\",\"N^-1\",\"White Noise\",\"Golden Ratio\",\"Blue Noise\",\"Projective Blue Noise\"");
+        for (int i = 1; i <= NUM_SAMPLES(); ++i)
+            LogLineAppend(l, i, "\"%i\",\"%f\",\"%f\"", i, powf(float(i), -0.5f), powf(float(i), -0.75f));
+    }
+    for (auto& e : log.errors[0])
+    {
+        for (int i = 1; i <= NUM_SAMPLES(); ++i)
+            e.push_back(powf(float(i), -0.5f));
+    }
+    for (auto& e : log.errors[1])
+    {
+        for (int i = 1; i <= NUM_SAMPLES(); ++i)
+            e.push_back(powf(float(i), -0.75f));
+    }
+    for (auto& e : log.errors[2])
+    {
+        for (int i = 1; i <= NUM_SAMPLES(); ++i)
+            e.push_back(powf(float(i), -1.0f));
     }
 
     // make images of the functions we are integrating
@@ -570,15 +597,19 @@ int main(int argc, char **argv)
 
     // do the tests for each type of sampling
     printf("White Noise...\n");
-    DoTest2D(GeneratePoints_WhiteNoise, log, "white", 0);
+    DoTest2D(GeneratePoints_WhiteNoise, log, "white", 3);
     printf("Golden Ratio...\n");
-    DoTest2D(GeneratePoints_GoldenRatio, log, "golden", 1);
+    DoTest2D(GeneratePoints_GoldenRatio, log, "golden", 4);
+
+    #if DO_SLOW_SAMPLES()
     printf("Blue Noise...\n");
-    DoTest2D(GeneratePoints_BlueNoise, log, "blue", 2);
+    DoTest2D(GeneratePoints_BlueNoise, log, "blue", 5);
     printf("Projective Blue Noise...\n");
-    DoTest2D(GeneratePoints_ProjectiveBlueNoise, log, "projblue", 3);
+    DoTest2D(GeneratePoints_ProjectiveBlueNoise, log, "projblue", 6);
+    #endif
 
     // make error graphs
+    printf("Making Graphs...\n");
     MakeErrorGraph(log, 0, "out/error_disk.png");
     MakeErrorGraph(log, 1, "out/error_triangle.png");
     MakeErrorGraph(log, 2, "out/error_step.png");
@@ -586,6 +617,7 @@ int main(int argc, char **argv)
     MakeErrorGraph(log, 4, "out/error_bilinear.png");
 
     // write out the logs
+    printf("Writing CSVs...\n");
     WriteLog(log.logs[0], "out/data_disk.csv");
     WriteLog(log.logs[1], "out/data_triangle.csv");
     WriteLog(log.logs[2], "out/data_step.csv");
@@ -599,7 +631,6 @@ int main(int argc, char **argv)
 
 TODO:
 
-* the graphs should have the standard error rate decrease lines too like sqrt(N) etc.
 * make the graph have a border and tick marks / axis marks and a legend somehow.
 
 * todos
