@@ -15,8 +15,9 @@
 #define TEST_IMAGE_SIZE() 128 // in pixels, on each axis
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
-#define NUM_SAMPLES() 100
+#define NUM_SAMPLES() 500
 #define DO_SLOW_SAMPLES() true
+#define DFT_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
 static const float c_referenceValue_Triangle = 0.5f;
@@ -141,7 +142,7 @@ void MitchelsBestCandidateAlgorithm (std::vector<T>& results, size_t desiredItem
 }
 
 template <typename T, typename LAMBDA1, typename LAMBDA2>
-void GoodCandidateAlgorithm(std::vector<T>& results, size_t desiredItemCount, int candidateMultiplier, const LAMBDA2& GenerateRandomCandidate, const LAMBDA1& DifferenceScoreCalculator)
+void GoodCandidateAlgorithm(std::vector<T>& results, size_t desiredItemCount, int candidateMultiplier, const LAMBDA2& GenerateRandomCandidate, const LAMBDA1& DifferenceScoreCalculator, bool reportProgress)
 {
     static const size_t DIMENSION = 2;
 
@@ -156,6 +157,8 @@ void GoodCandidateAlgorithm(std::vector<T>& results, size_t desiredItemCount, in
 
     // make space for the results
     results.resize(desiredItemCount);
+
+    int lastPercent = -1;
 
     // for each item we need to fill in
     for (int itemIndex = 0; itemIndex < desiredItemCount; ++itemIndex)
@@ -230,6 +233,21 @@ void GoodCandidateAlgorithm(std::vector<T>& results, size_t desiredItemCount, in
 
         // keep the point that had the lowest summed rank
         results[itemIndex] = candidates[overallScores[0].index];
+
+        if (reportProgress)
+        {
+            int percent = int(100.0f * float(itemIndex) / float(desiredItemCount));
+            if (lastPercent != percent)
+            {
+                lastPercent = percent;
+                printf("\rMaking Points: %i%%", lastPercent);
+            }
+        }
+    }
+
+    if (reportProgress)
+    {
+        printf("\rMaking Points: 100%%\n");
     }
 }
 
@@ -331,7 +349,8 @@ void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoi
                 distSq += diff * diff;
             }
             return sqrtf(distSq);
-        }
+        },
+        true
     );
 }
 
@@ -394,8 +413,7 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
 {
     // draw the footer - show the angle and offset distribution on a number line
     Image image(SAMPLE_IMAGE_SIZE(), SAMPLE_IMAGE_SIZE());
-    Image imageSamples(50, 50);  // TODO: make this be a #define at the top for how large it is
-    ImageComplex imageSamplesDFTComplex(imageSamples.m_width, imageSamples.m_height);
+    Image imageSamples(DFT_IMAGE_SIZE(), DFT_IMAGE_SIZE());
 
     int graphSize = int(float(SAMPLE_IMAGE_SIZE()) * 0.7f);
     int padding = (SAMPLE_IMAGE_SIZE() - graphSize) / 2;
@@ -451,6 +469,16 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
             fprintf(file, "\"%f\",\"%f\"\n", v[0], v[1]);
         fclose(file);
     }
+
+    // DFT the samples image
+    ImageComplex imageSamplesDFTComplex(imageSamples.m_width, imageSamples.m_height);
+    DFTImage(imageSamples, imageSamplesDFTComplex, true);
+    Image imageSamplesDFT(imageSamples.m_width, imageSamples.m_height);
+    GetMagnitudeData(imageSamplesDFTComplex, imageSamplesDFT);
+    sprintf_s(fileName, "out/samplesdft_%s.png", label);
+    SaveImage(fileName, imageSamplesDFT);
+    sprintf_s(fileName, "out/samplesdftraw_%s.png", label);
+    SaveImage(fileName, imageSamples);
 }
 
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
@@ -459,8 +487,6 @@ void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label
     std::vector<Vec2> points;
     generatePoints(points, NUM_SAMPLES());
     MakeSamplesImage(points, label);
-
-    // TODO: DFT point samples
 
     // test the sample points for integration
     Integrate(SampleImage_Disk, points, c_referenceValue_Disk, log.logs[0], log.errors[noiseType][0]);
@@ -508,9 +534,11 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
         {0, 0, 128},
     };
 
+    int colorIndex = 0;
     for (int sampleType = 0; sampleType < log.errors.size(); ++sampleType)
     {
-        uint8 lineColor = uint8(255.0f * float(sampleType) / float(log.errors.size()));
+        if (sampleType < 3)
+            continue;
 
         bool firstPoint = true;
         Vec2 lastUV;
@@ -537,10 +565,12 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
                 int y1 = int(0.5f + lastUV[1] * float(GRAPH_IMAGE_SIZE()));
                 int x2 = int(0.5f + uv[0] * float(GRAPH_IMAGE_SIZE()));
                 int y2 = int(0.5f + uv[1] * float(GRAPH_IMAGE_SIZE()));
-                DrawLine(image, x1, y1, x2, y2, colors[sampleType][0], colors[sampleType][1], colors[sampleType][2]);
+
+                DrawLine(image, x1, y1, x2, y2, colors[colorIndex][0], colors[colorIndex][1], colors[colorIndex][2]);
             }
             lastUV = uv;
         }
+        ++colorIndex;
     }
 
     // TODO: make legend somehow. maybe a source image that gets loaded and slapped on/
@@ -631,7 +661,20 @@ int main(int argc, char **argv)
 
 TODO:
 
+* projective blue noise might want to report how long it takes to generate (err... percent done)
+
+* flatten the best / good candidate so it doesn't take lambdas, and knows how to do comparisons / generation internally for vector dimensions.
+
+* multithread the DFT
+
+* make the tests and sample types be structs so fewer magic numbers
+
+* get stuff from email.
+ * like the other golden ratio pattern w/ randomization.
+ * also do something graphical (soft shadow?)
+
 * make the graph have a border and tick marks / axis marks and a legend somehow.
+* look through comments and get rid of anything that was copy/paste
 
 * todos
 * generalized golden ratio isn't doing that well for integration seemingly. why not, are you doing it right?

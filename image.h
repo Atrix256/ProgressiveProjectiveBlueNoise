@@ -3,6 +3,8 @@
 #include <vector>
 #include <complex>
 #include <stdint.h>
+#include <thread>
+#include <atomic>
 
 typedef uint8_t uint8;
 
@@ -64,19 +66,58 @@ std::complex<float> DFTPixel (const Image &image, int K, int L)
     return ret;
 }
 
-void DFTImage (const Image &srcImage, ImageComplex &destImage)
+void DFTImage (const Image &srcImage, ImageComplex &destImage, bool printProgress)
 {
     // calculate 2d dft (brute force, not using fast fourier transform)
     destImage = ImageComplex(srcImage.m_width, srcImage.m_height);
     std::complex<float>* pixel = destImage.m_pixels.data();
-    for (int y = 0; y < srcImage.m_height; ++y)
+
+    size_t numThreads = std::thread::hardware_concurrency();
+    std::vector<std::thread> threads;
+    threads.resize(numThreads);
+    printf("Doing DFT with %zu threads...\n", numThreads);
+
+    std::atomic<size_t> nextRow(0);
+    for (std::thread& t : threads)
     {
-        for (int x = 0; x < srcImage.m_width; ++x)
-        {
-            *pixel = DFTPixel(srcImage, x, y);
-            pixel++;
-        }
+        t = std::thread(
+            [&]()
+            {
+                size_t row = nextRow.fetch_add(1);
+                bool reportProgress = printProgress && (row == 0);
+                int lastPercent = -1;
+
+                while (row < srcImage.m_height)
+                {
+                    // calculate the DFT for every pixel / frequency in this row
+                    for (size_t x = 0; x < srcImage.m_width; ++x)
+                    {
+                        destImage.m_pixels[row * destImage.m_width + x] = DFTPixel(srcImage, (int)x, (int)row);
+                    }
+
+                    // report progress if we should
+                    if (reportProgress)
+                    {
+                        int percent = int(100.0f * float(row) / float(srcImage.m_height));
+                        if (lastPercent != percent)
+                        {
+                            lastPercent = percent;
+                            printf("            \rDFT: %i%%", lastPercent);
+                        }
+                    }
+
+                    // go to the next row
+                    row = nextRow.fetch_add(1);
+                }
+            }
+        );
     }
+
+    for (std::thread& t : threads)
+        t.join();
+
+    if(printProgress)
+        printf("            \rDFT: 100%%\n");
 }
 
 void GetMagnitudeData (const ImageComplex& srcImage, Image& destImage)
