@@ -15,7 +15,7 @@
 #define TEST_IMAGE_SIZE() 128 // in pixels, on each axis
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
-#define NUM_SAMPLES() 500
+#define NUM_SAMPLES() 100
 #define DO_SLOW_SAMPLES() true
 
 #define DO_DFT() false
@@ -102,9 +102,15 @@ float SampleImage_Bilinear(const Vec2& samplePos)
     return samplePos[0] * samplePos[1];
 }
 
-template <typename T, typename LAMBDA1, typename LAMBDA2>
-void MitchelsBestCandidateAlgorithm (std::vector<T>& results, size_t desiredItemCount, int candidateMultiplier, const LAMBDA2& GenerateRandomCandidate, const LAMBDA1& DifferenceScoreCalculator)
+template <size_t DIMENSION>
+void MitchelsBestCandidateAlgorithm (std::vector< std::array<float, DIMENSION>>& results, size_t desiredItemCount, int candidateMultiplier)
 {
+    typedef std::array<float, DIMENSION> T;
+
+    static std::random_device rd;
+    static std::mt19937 rng(rd());
+    static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
     results.resize(desiredItemCount);
 
     // for each item we need to fill in
@@ -120,14 +126,24 @@ void MitchelsBestCandidateAlgorithm (std::vector<T>& results, size_t desiredItem
         for (int candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
         {
             // make a randomized candidate
-            T candidate = GenerateRandomCandidate();
+            T candidate;
+            for (size_t i = 0; i < DIMENSION; ++i)
+                candidate[i] = dist(rng);
+
             float minimumDifferenceScore = FLT_MAX;
 
             // the score of this candidate is the minimum difference from all existing items
             for (int checkItemIndex = 0; checkItemIndex < itemIndex; ++checkItemIndex)
             {
-                float differenceScore = DifferenceScoreCalculator(candidate, results[checkItemIndex]);
-                minimumDifferenceScore = std::min(minimumDifferenceScore, differenceScore);
+                float distSq = 0.0f;
+                for (int i = 0; i < DIMENSION; ++i)
+                {
+                    float diff = fabsf(results[checkItemIndex][i] - candidate[i]);
+                    if (diff > 0.5f)
+                        diff = 1.0f - diff;
+                    distSq += diff * diff;
+                }
+                minimumDifferenceScore = std::min(minimumDifferenceScore, distSq);
             }
 
             // the candidate with the largest minimum distance is the one we want to keep
@@ -280,32 +296,7 @@ void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints)
 
 void GeneratePoints_BlueNoise(std::vector<Vec2>& points, size_t numPoints)
 {
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-
-    MitchelsBestCandidateAlgorithm(
-        points,
-        numPoints,
-        5,
-        [&]()
-        {
-            Vec2 ret;
-            ret[0] = dist(RNG());
-            ret[1] = dist(RNG());
-            return ret;
-        },
-        [](const Vec2& A, const Vec2& B)
-        {
-            float distSq = 0.0f;
-            for (int i = 0; i < 2; ++i)
-            {
-                float diff = fabsf(B[i] - A[i]);
-                if (diff > 0.5f)
-                    diff = 1.0f - diff;
-                distSq += diff * diff;
-            }
-            return distSq;
-        }
-    );
+    MitchelsBestCandidateAlgorithm(points, numPoints, 5);
 }
 
 void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoints)
@@ -666,11 +657,7 @@ int main(int argc, char **argv)
 
 TODO:
 
-* projective blue noise might want to report how long it takes to generate (err... percent done)
-
 * flatten the best / good candidate so it doesn't take lambdas, and knows how to do comparisons / generation internally for vector dimensions.
-
-* multithread the DFT
 
 * make the tests and sample types be structs so fewer magic numbers
 
