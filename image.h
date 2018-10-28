@@ -75,7 +75,7 @@ void DFTImage (const Image &srcImage, ImageComplex &destImage, bool printProgres
     size_t numThreads = std::thread::hardware_concurrency();
     std::vector<std::thread> threads;
     threads.resize(numThreads);
-    printf("Doing DFT with %zu threads...\n", numThreads);
+    printf("Doing %ix%i DFT with %zu threads...\n", srcImage.m_width, srcImage.m_height, numThreads);
 
     std::atomic<size_t> nextRow(0);
     for (std::thread& t : threads)

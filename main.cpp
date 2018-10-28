@@ -17,6 +17,8 @@
 #define GRAPH_IMAGE_SIZE() 1024
 #define NUM_SAMPLES() 500
 #define DO_SLOW_SAMPLES() true
+
+#define DO_DFT() false
 #define DFT_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
@@ -470,15 +472,18 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
         fclose(file);
     }
 
-    // DFT the samples image
-    ImageComplex imageSamplesDFTComplex(imageSamples.m_width, imageSamples.m_height);
-    DFTImage(imageSamples, imageSamplesDFTComplex, true);
-    Image imageSamplesDFT(imageSamples.m_width, imageSamples.m_height);
-    GetMagnitudeData(imageSamplesDFTComplex, imageSamplesDFT);
-    sprintf_s(fileName, "out/samplesdft_%s.png", label);
-    SaveImage(fileName, imageSamplesDFT);
-    sprintf_s(fileName, "out/samplesdftraw_%s.png", label);
-    SaveImage(fileName, imageSamples);
+    // DFT the samples image if we should
+    if (DO_DFT())
+    {
+        ImageComplex imageSamplesDFTComplex(imageSamples.m_width, imageSamples.m_height);
+        DFTImage(imageSamples, imageSamplesDFTComplex, true);
+        Image imageSamplesDFT(imageSamples.m_width, imageSamples.m_height);
+        GetMagnitudeData(imageSamplesDFTComplex, imageSamplesDFT);
+        sprintf_s(fileName, "out/samplesdft_%s.png", label);
+        SaveImage(fileName, imageSamplesDFT);
+        sprintf_s(fileName, "out/samplesdftraw_%s.png", label);
+        SaveImage(fileName, imageSamples);
+    }
 }
 
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
