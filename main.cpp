@@ -159,10 +159,14 @@ void MitchelsBestCandidateAlgorithm (std::vector< std::array<float, DIMENSION>>&
     }
 }
 
-template <typename T, typename LAMBDA1, typename LAMBDA2>
-void GoodCandidateAlgorithm(std::vector<T>& results, size_t desiredItemCount, int candidateMultiplier, const LAMBDA2& GenerateRandomCandidate, const LAMBDA1& DifferenceScoreCalculator, bool reportProgress)
+template <size_t DIMENSION>
+void GoodCandidateAlgorithm(std::vector< std::array<float, DIMENSION>>& results, size_t desiredItemCount, int candidateMultiplier, bool reportProgress)
 {
-    static const size_t DIMENSION = 2;
+    typedef std::array<float, DIMENSION> T;
+
+    static std::random_device rd;
+    static std::mt19937 rng(rd());
+    static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
     // map candidate index to score
     struct CandidateScore
@@ -188,7 +192,10 @@ void GoodCandidateAlgorithm(std::vector<T>& results, size_t desiredItemCount, in
         std::vector<T> candidates;
         candidates.resize(candidateCount);
         for (T& candidate : candidates)
-            candidate = GenerateRandomCandidate();
+        {
+            for (size_t i = 0; i < DIMENSION; ++i)
+                candidate[i] = dist(rng);
+        }
 
         // initialize the overall scores
         CandidateScores overallScores;
@@ -206,6 +213,11 @@ void GoodCandidateAlgorithm(std::vector<T>& results, size_t desiredItemCount, in
         // score the candidates by each measure of scoring
         for (size_t scoreIndex = 0; scoreIndex < c_numScores; ++scoreIndex)
         {
+            // make the axis mask for this score index. we are scoring within a specific subspace.
+            std::array<bool, DIMENSION> axisMask;
+            for (size_t i = 0; i < DIMENSION; ++i)
+                axisMask[i] = (scoreIndex & (size_t(1) << i)) ? false : true;
+
             // for each candidate in this score index...
             for (size_t candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
             {
@@ -216,8 +228,18 @@ void GoodCandidateAlgorithm(std::vector<T>& results, size_t desiredItemCount, in
                 float minimumDifferenceScore = FLT_MAX;
                 for (int checkItemIndex = 0; checkItemIndex < itemIndex; ++checkItemIndex)
                 {
-                    float differenceScore = DifferenceScoreCalculator(candidate, results[checkItemIndex], scoreIndex);
-                    minimumDifferenceScore = std::min(minimumDifferenceScore, differenceScore);
+                    float distSq = 0.0f;
+                    for (int i = 0; i < DIMENSION; ++i)
+                    {
+                        if (!axisMask[i])
+                            continue;
+
+                        float diff = fabsf(results[checkItemIndex][i] - candidate[i]);
+                        if (diff > 0.5f)
+                            diff = 1.0f - diff;
+                        distSq += diff * diff;
+                    }
+                    minimumDifferenceScore = std::min(minimumDifferenceScore, distSq);
                 }
 
                 scores[candidateIndex].index = candidateIndex;
@@ -301,50 +323,7 @@ void GeneratePoints_BlueNoise(std::vector<Vec2>& points, size_t numPoints)
 
 void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoints)
 {
-    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-
-    static const size_t c_numScores = (1 << 2) - 1;
-    Vec2 axisMasks[c_numScores];
-    for (size_t i = 1; i <= c_numScores; ++i)
-    {
-        Vec2& axisMask = axisMasks[i - 1];
-
-        for (size_t j = 0; j < 2; ++j)
-        {
-            if (i & (size_t(1) << j))
-                axisMask[j] = 1.0f;
-            else
-                axisMask[j] = 0.0f;
-        }
-    }
-
-    GoodCandidateAlgorithm(
-        points,
-        numPoints,
-        100,
-        [&]()
-        {
-            Vec2 ret;
-            ret[0] = dist(RNG());
-            ret[1] = dist(RNG());
-            return ret;
-        },
-        [&](const Vec2& A, const Vec2& B, size_t scoreIndex)
-        {
-            const Vec2& axisMask = axisMasks[scoreIndex];
-
-            float distSq = 0.0f;
-            for (int i = 0; i < 2; ++i)
-            {
-                float diff = fabsf(B[i] - A[i]) * axisMask[i];
-                if (diff > 0.5f)
-                    diff = 1.0f - diff;
-                distSq += diff * diff;
-            }
-            return sqrtf(distSq);
-        },
-        true
-    );
+    GoodCandidateAlgorithm(points, numPoints, 100, true);
 }
 
 template <typename T>
@@ -656,6 +635,11 @@ int main(int argc, char **argv)
 /*
 
 TODO:
+
+* test projective blue noise with lower sample count but higher multiplier
+ * find a good value for projective blue noise, even if it's restrictively high?
+
+* acceleration structure for blue noise and projective blue noise
 
 * flatten the best / good candidate so it doesn't take lambdas, and knows how to do comparisons / generation internally for vector dimensions.
 
