@@ -18,6 +18,11 @@
 #define NUM_SAMPLES() 100
 #define DO_SLOW_SAMPLES() true
 
+#define BLUENOISE_CANDIDATE_MULTIPLIER() 5
+
+#define PROJBLUENOISE_CANDIDATE_MULTIPLIER() 100
+#define PROJBLUENOISE_PARTITIONS() 10
+
 #define DO_DFT() false
 #define DFT_IMAGE_SIZE() 256
 
@@ -475,9 +480,6 @@ void GoodCandidateAlgorithmAccell(std::vector< std::array<float, DIMENSION>>& re
     for (size_t scoreIndex = 0; scoreIndex < c_numScores; ++scoreIndex)
         subspaces[scoreIndex].Init(scoreIndex);
 
-    // TODO: when adding new points, also add them to the acceleration structure
-    // TODO: when comparing points, use the acceleration structure to find the nearest cells.
-
     // make space for the results
     results.resize(desiredItemCount);
 
@@ -601,12 +603,13 @@ void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints)
 
 void GeneratePoints_BlueNoise(std::vector<Vec2>& points, size_t numPoints)
 {
-    MitchelsBestCandidateAlgorithm(points, numPoints, 5);
+    MitchelsBestCandidateAlgorithm(points, numPoints, BLUENOISE_CANDIDATE_MULTIPLIER());
 }
 
 void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoints)
 {
-    GoodCandidateAlgorithmAccell<2,10>(points, numPoints, 100, true);
+    //GoodCandidateAlgorithm(points, numPoints, PROJBLUENOISE_CANDIDATE_MULTIPLIER(), true);
+    GoodCandidateAlgorithmAccell<2, PROJBLUENOISE_PARTITIONS()>(points, numPoints, PROJBLUENOISE_CANDIDATE_MULTIPLIER(), true);
 }
 
 template <typename T>
@@ -917,6 +920,8 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* the projective blue noise is definitely worse quality when using the accel code vs not, for same parameters!
 
 * check todos in subspace code. check code to make sure things make sense. check params w/ higher values to make sure it's working and making good blue noise still
 
