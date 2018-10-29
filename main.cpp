@@ -420,16 +420,24 @@ struct GoodCandidateSubspace
         PartitionCoordinatesForPoint(point, partitionCoordinates);
 
         // Loop through increasingly larger rectangular rings until we find a ring that has at least one point.
-        // Return the distance to the closest point in that ring.
+        // return the distance to the closest point in that ring, and the next ring out.
+        // We need to do an extra ring to get the correct answer.
         int maxRadius = int(PARTITIONS / 2);
+        bool foundInnerRing = false;
+        float minDist = FLT_MAX;
         for (int radius = 0; radius <= maxRadius; ++radius)
         {
             float distance = SquaredDistanceToClosestPointRecursive(point, partitionCoordinates, radius, 0);
-            if (distance < FLT_MAX)
-                return distance;
+            minDist = std::min(minDist, distance);
+            if (minDist < FLT_MAX)
+            {
+                if (foundInnerRing)
+                    return minDist;
+                else
+                    foundInnerRing = true;
+            }
         }
-
-        return FLT_MAX;
+        return minDist;
     }
     
     void Insert(const T& point)
