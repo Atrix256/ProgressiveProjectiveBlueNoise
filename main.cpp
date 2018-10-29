@@ -914,6 +914,8 @@ TODO:
 
 * in good candidate algorithm, rename scores terminology to subspaces
 
+* maybe have regular blue noise use acceleration structure too? unsure if needed.
+
 * test projective blue noise with lower sample count but higher multiplier
  * find a good value for projective blue noise, even if it's restrictively high?
  * should be better after acceleration structures are added
