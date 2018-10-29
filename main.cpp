@@ -333,7 +333,8 @@ struct GoodCandidateSubspace
             if (!axisMask[dimensionIndex])
                 continue;
 
-            int axisPartition = int(0.5f + point[dimensionIndex] * float(PARTITIONS - 1));
+            int axisPartition = int(point[dimensionIndex] * float(PARTITIONS));
+            axisPartition = std::min(axisPartition, int(PARTITIONS-1));
             subspacePartition += axisPartition * multiplier;
             multiplier *= PARTITIONS;
         }
@@ -397,6 +398,7 @@ struct GoodCandidateSubspace
                 }
                 minDistSq = std::min(minDistSq, distSq);
             }
+
             return minDistSq;
         }
 
@@ -409,9 +411,10 @@ struct GoodCandidateSubspace
         std::array<int, DIMENSION> searchPartitionCoordinates = partitionCoordinates;
         for (int axisOffset = -radius; axisOffset <= radius; ++axisOffset)
         {
-            searchPartitionCoordinates[dimensionIndex] = (partitionCoordinates[dimensionIndex] + radius + PARTITIONS) % PARTITIONS;
+            searchPartitionCoordinates[dimensionIndex] = (partitionCoordinates[dimensionIndex] + axisOffset + PARTITIONS) % PARTITIONS;
             ret = std::min(ret, SquaredDistanceToClosestPointRecursive(point, searchPartitionCoordinates, radius, dimensionIndex + 1));
         }
+
         return ret;
     }
 
@@ -920,6 +923,8 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* try penalizing bad scores more, by summing squared rank or something?
 
 * the projective blue noise is definitely worse quality when using the accel code vs not, for same parameters!
 
