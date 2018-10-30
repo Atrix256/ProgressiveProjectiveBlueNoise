@@ -23,7 +23,7 @@
 #define PROJBLUENOISE_CANDIDATE_MULTIPLIER() 100
 #define PROJBLUENOISE_PARTITIONS() 10
 
-#define DO_DFT() false
+#define DO_DFT() true
 #define DFT_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
@@ -38,16 +38,36 @@ static const float c_goldenRatio2 = 1.32471795724474602596f;
 
 typedef std::array<float, 2> Vec2;
 
-#if DO_SLOW_SAMPLES()
-static const size_t c_numSampleTypes = 7;
-#else
-static const size_t c_numSampleTypes = 5;
-#endif
+typedef void(*GeneratePointsFN)(std::vector<Vec2>& points, size_t numPoints);
+
+void GeneratePoints_WhiteNoise(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_BlueNoise(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_ProjectiveBlueNoise2(std::vector<Vec2>& points, size_t numPoints);
+
+struct SamplingPattern
+{
+    const char* nameHuman;
+    const char* nameFile;
+    GeneratePointsFN generatePoints;
+    bool enable;
+};
+
+static const SamplingPattern g_samplingPatterns[] =
+{
+    {"White Noise", "white", GeneratePoints_WhiteNoise, true},
+    {"Golden Ratio", "golden", GeneratePoints_GoldenRatio, true},
+    {"Blue Noise", "blue", GeneratePoints_BlueNoise, DO_SLOW_SAMPLES()},
+    {"Projective Blue Noise", "projblue", GeneratePoints_ProjectiveBlueNoise, DO_SLOW_SAMPLES()},
+    {"Projective Blue Noise 2", "projblue2", GeneratePoints_ProjectiveBlueNoise2, DO_SLOW_SAMPLES()},
+};
+static const size_t c_numSamplingPatterns = sizeof(g_samplingPatterns) / sizeof(g_samplingPatterns[0]);
 
 struct Log
 {
     std::array<std::vector<std::string>, 5> logs;
-    std::array<std::array<std::vector<float>, 5>, c_numSampleTypes> errors;  // indexed by: [sampleType][test]
+    std::array<std::array<std::vector<float>, 5>, c_numSamplingPatterns+3> errors;  // indexed by: [sampleType][test]
 };
 
 typedef uint8_t uint8;
@@ -460,7 +480,7 @@ struct GoodCandidateSubspace
     std::array<int, DIMENSION> axisPartitionOffset;
 };
 
-template <size_t DIMENSION, size_t PARTITIONS>
+template <size_t DIMENSION, size_t PARTITIONS, bool EXTRAPENALTY>
 void GoodCandidateAlgorithmAccell(std::vector< std::array<float, DIMENSION>>& results, size_t desiredItemCount, int candidateMultiplier, bool reportProgress)
 {
     typedef std::array<float, DIMENSION> T;
@@ -543,7 +563,7 @@ void GoodCandidateAlgorithmAccell(std::vector< std::array<float, DIMENSION>>& re
 
             // add the rank of this score a score for each candidate
             for (size_t candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
-                overallScores[scores[candidateIndex].index].score += float(candidateIndex);
+                overallScores[scores[candidateIndex].index].score += EXTRAPENALTY ? float(candidateIndex) * float(candidateIndex) : float(candidateIndex);
         }
 
         // sort the overall scores from low to high
@@ -611,8 +631,12 @@ void GeneratePoints_BlueNoise(std::vector<Vec2>& points, size_t numPoints)
 
 void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoints)
 {
-    //GoodCandidateAlgorithm(points, numPoints, PROJBLUENOISE_CANDIDATE_MULTIPLIER(), true);
-    GoodCandidateAlgorithmAccell<2, PROJBLUENOISE_PARTITIONS()>(points, numPoints, PROJBLUENOISE_CANDIDATE_MULTIPLIER(), true);
+    GoodCandidateAlgorithmAccell<2, PROJBLUENOISE_PARTITIONS(), false>(points, numPoints, PROJBLUENOISE_CANDIDATE_MULTIPLIER(), true);
+}
+
+void GeneratePoints_ProjectiveBlueNoise2(std::vector<Vec2>& points, size_t numPoints)
+{
+    GoodCandidateAlgorithmAccell<2, PROJBLUENOISE_PARTITIONS(), true>(points, numPoints, PROJBLUENOISE_CANDIDATE_MULTIPLIER(), true);
 }
 
 template <typename T>
@@ -866,17 +890,17 @@ int main(int argc, char **argv)
         for (int i = 1; i <= NUM_SAMPLES(); ++i)
             LogLineAppend(l, i, "\"%i\",\"%f\",\"%f\"", i, powf(float(i), -0.5f), powf(float(i), -0.75f));
     }
-    for (auto& e : log.errors[0])
+    for (auto& e : log.errors[c_numSamplingPatterns+0])
     {
         for (int i = 1; i <= NUM_SAMPLES(); ++i)
             e.push_back(powf(float(i), -0.5f));
     }
-    for (auto& e : log.errors[1])
+    for (auto& e : log.errors[c_numSamplingPatterns+1])
     {
         for (int i = 1; i <= NUM_SAMPLES(); ++i)
             e.push_back(powf(float(i), -0.75f));
     }
-    for (auto& e : log.errors[2])
+    for (auto& e : log.errors[c_numSamplingPatterns+2])
     {
         for (int i = 1; i <= NUM_SAMPLES(); ++i)
             e.push_back(powf(float(i), -1.0f));
@@ -890,17 +914,15 @@ int main(int argc, char **argv)
     MakeSampleImage(SampleImage_Bilinear, "out/int_bilinear.png");
 
     // do the tests for each type of sampling
-    printf("White Noise...\n");
-    DoTest2D(GeneratePoints_WhiteNoise, log, "white", 3);
-    printf("Golden Ratio...\n");
-    DoTest2D(GeneratePoints_GoldenRatio, log, "golden", 4);
+    for (size_t samplingPattern = 0; samplingPattern < c_numSamplingPatterns; ++samplingPattern)
+    {
+        const SamplingPattern& pattern = g_samplingPatterns[samplingPattern];
+        if (!pattern.enable)
+            continue;
 
-    #if DO_SLOW_SAMPLES()
-    printf("Blue Noise...\n");
-    DoTest2D(GeneratePoints_BlueNoise, log, "blue", 5);
-    printf("Projective Blue Noise...\n");
-    DoTest2D(GeneratePoints_ProjectiveBlueNoise, log, "projblue", 6);
-    #endif
+        printf("%s...\n", pattern.nameHuman);
+        DoTest2D(pattern.generatePoints, log, pattern.nameFile, (int)samplingPattern);
+    }
 
     // make error graphs
     printf("Making Graphs...\n");
