@@ -15,7 +15,7 @@
 #define TEST_IMAGE_SIZE() 128 // in pixels, on each axis
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
-#define NUM_SAMPLES() 100
+#define NUM_SAMPLES() 500
 #define DO_SLOW_SAMPLES() true
 
 #define BLUENOISE_CANDIDATE_MULTIPLIER() 5
@@ -23,7 +23,7 @@
 #define PROJBLUENOISE_CANDIDATE_MULTIPLIER() 100
 #define PROJBLUENOISE_PARTITIONS() 10
 
-#define DO_DFT() true
+#define DO_DFT() false
 #define DFT_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
@@ -946,11 +946,15 @@ int main(int argc, char **argv)
 /*
 TODO:
 
-* try penalizing bad scores more, by summing squared rank or something?
+* use acceleration structure for blue noise too.
 
-* the projective blue noise is definitely worse quality when using the accel code vs not, for same parameters!
+* how to compare projblue and projblue2?
+* need an anisotropy thingy from the DFT for one
+* need a histogram of projected points i think.
 
-* check todos in subspace code. check code to make sure things make sense. check params w/ higher values to make sure it's working and making good blue noise still
+* there's a crash when some of the sampling is disabled. (eg white noise)
+
+* formalize the tests too
 
 * in good candidate algorithm, rename scores terminology to subspaces
 
