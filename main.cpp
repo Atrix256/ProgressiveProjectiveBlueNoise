@@ -23,7 +23,7 @@
 #define PROJBLUENOISE_CANDIDATE_MULTIPLIER() 100
 #define PROJBLUENOISE_PARTITIONS() 10
 
-#define DO_DFT() false
+#define DO_DFT() true
 #define DFT_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
@@ -42,6 +42,7 @@ typedef void(*GeneratePointsFN)(std::vector<Vec2>& points, size_t numPoints);
 
 void GeneratePoints_WhiteNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_GoldenRatio2(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_BlueNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_ProjectiveBlueNoise2(std::vector<Vec2>& points, size_t numPoints);
@@ -58,6 +59,7 @@ static const SamplingPattern g_samplingPatterns[] =
 {
     {"White Noise", "white", GeneratePoints_WhiteNoise, true},
     {"Golden Ratio", "golden", GeneratePoints_GoldenRatio, true},
+    {"Golden Ratio2", "golden2", GeneratePoints_GoldenRatio2, true},
     {"Blue Noise", "blue", GeneratePoints_BlueNoise, DO_SLOW_SAMPLES()},
     {"Projective Blue Noise", "projblue", GeneratePoints_ProjectiveBlueNoise, DO_SLOW_SAMPLES()},
     {"Projective Blue Noise 2", "projblue2", GeneratePoints_ProjectiveBlueNoise2, DO_SLOW_SAMPLES()},
@@ -181,138 +183,6 @@ void MitchelsBestCandidateAlgorithm (std::vector< std::array<float, DIMENSION>>&
 
         // keep the winning candidate
         results[itemIndex] = bestCandidate;
-    }
-}
-
-template <size_t DIMENSION>
-void GoodCandidateAlgorithm(std::vector< std::array<float, DIMENSION>>& results, size_t desiredItemCount, int candidateMultiplier, bool reportProgress)
-{
-    typedef std::array<float, DIMENSION> T;
-
-    static std::random_device rd;
-    static std::mt19937 rng(rd());
-    static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-
-    // map candidate index to score
-    struct CandidateScore
-    {
-        size_t index;
-        float score;
-    };
-    typedef std::vector<CandidateScore> CandidateScores;
-    static const size_t c_numScores = (1 << DIMENSION) - 1;  // 2^(dimension)-1
-
-    // make space for the results
-    results.resize(desiredItemCount);
-
-    int lastPercent = -1;
-
-    // for each item we need to fill in
-    for (int itemIndex = 0; itemIndex < desiredItemCount; ++itemIndex)
-    {
-        // calculate how many candidates we want to generate for this item
-        int candidateCount = itemIndex * candidateMultiplier + 1;
-
-        // generate the candidates
-        std::vector<T> candidates;
-        candidates.resize(candidateCount);
-        for (T& candidate : candidates)
-        {
-            for (size_t i = 0; i < DIMENSION; ++i)
-                candidate[i] = dist(rng);
-        }
-
-        // initialize the overall scores
-        CandidateScores overallScores;
-        overallScores.resize(candidateCount);
-        for (int candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
-        {
-            overallScores[candidateIndex].index = candidateIndex;
-            overallScores[candidateIndex].score = 0.0f;
-        }
-
-        // allocate space for the individual scores
-        CandidateScores scores;
-        scores.resize(candidateCount);
-
-        // score the candidates by each measure of scoring
-        for (size_t scoreIndex = 0; scoreIndex < c_numScores; ++scoreIndex)
-        {
-            // make the axis mask for this score index. we are scoring within a specific subspace.
-            std::array<bool, DIMENSION> axisMask;
-            for (size_t i = 0; i < DIMENSION; ++i)
-                axisMask[i] = (scoreIndex & (size_t(1) << i)) ? false : true;
-
-            // for each candidate in this score index...
-            for (size_t candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
-            {
-                const T& candidate = candidates[candidateIndex];
-
-                // calculate the score of the candidate.
-                // the score is the minimum distance to any other points
-                float minimumDifferenceScore = FLT_MAX;
-                for (int checkItemIndex = 0; checkItemIndex < itemIndex; ++checkItemIndex)
-                {
-                    float distSq = 0.0f;
-                    for (int i = 0; i < DIMENSION; ++i)
-                    {
-                        if (!axisMask[i])
-                            continue;
-
-                        float diff = fabsf(results[checkItemIndex][i] - candidate[i]);
-                        if (diff > 0.5f)
-                            diff = 1.0f - diff;
-                        distSq += diff * diff;
-                    }
-                    minimumDifferenceScore = std::min(minimumDifferenceScore, distSq);
-                }
-
-                scores[candidateIndex].index = candidateIndex;
-                scores[candidateIndex].score = minimumDifferenceScore;
-            }
-
-            // sort the scores from high to low
-            std::sort(
-                scores.begin(),
-                scores.end(),
-                [] (const CandidateScore& A, const CandidateScore& B)
-                {
-                    return A.score > B.score;
-                }
-            );
-
-            // add the rank of this score a score for each candidate
-            for (size_t candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
-                overallScores[scores[candidateIndex].index].score += float(candidateIndex);
-        }
-
-        // sort the overall scores from low to high
-        std::sort(
-            overallScores.begin(),
-            overallScores.end(),
-            [] (const CandidateScore& A, const CandidateScore& B)
-            {
-                return A.score < B.score;
-            }
-        );
-
-        // keep the point that had the lowest summed rank
-        results[itemIndex] = candidates[overallScores[0].index];
-
-        if (reportProgress)
-        {
-            int percent = int(100.0f * float(itemIndex) / float(desiredItemCount));
-            if (lastPercent != percent)
-            {
-                lastPercent = percent;
-                printf("\rMaking Points: %i%%", lastPercent);
-            }
-        }
-    }
-
-    if (reportProgress)
-    {
-        printf("\rMaking Points: 100%%\n");
     }
 }
 
@@ -480,6 +350,141 @@ struct GoodCandidateSubspace
     std::array<int, DIMENSION> axisPartitionOffset;
 };
 
+template <size_t DIMENSION>
+void GoodCandidateAlgorithm(std::vector< std::array<float, DIMENSION>>& results, size_t desiredItemCount, int candidateMultiplier, bool reportProgress)
+{
+    typedef std::array<float, DIMENSION> T;
+
+    static std::random_device rd;
+    static std::mt19937 rng(rd());
+    static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    GoodCandidateSubspace accelerationStructure;
+    accelerationStructure.Init(0);
+
+    // map candidate index to score
+    struct CandidateScore
+    {
+        size_t index;
+        float score;
+    };
+    typedef std::vector<CandidateScore> CandidateScores;
+    static const size_t c_numScores = (1 << DIMENSION) - 1;  // 2^(dimension)-1
+
+    // make space for the results
+    results.resize(desiredItemCount);
+
+    int lastPercent = -1;
+
+    // for each item we need to fill in
+    for (int itemIndex = 0; itemIndex < desiredItemCount; ++itemIndex)
+    {
+        // calculate how many candidates we want to generate for this item
+        int candidateCount = itemIndex * candidateMultiplier + 1;
+
+        // generate the candidates
+        std::vector<T> candidates;
+        candidates.resize(candidateCount);
+        for (T& candidate : candidates)
+        {
+            for (size_t i = 0; i < DIMENSION; ++i)
+                candidate[i] = dist(rng);
+        }
+
+        // initialize the overall scores
+        CandidateScores overallScores;
+        overallScores.resize(candidateCount);
+        for (int candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
+        {
+            overallScores[candidateIndex].index = candidateIndex;
+            overallScores[candidateIndex].score = 0.0f;
+        }
+
+        // allocate space for the individual scores
+        CandidateScores scores;
+        scores.resize(candidateCount);
+
+        // score the candidates by each measure of scoring
+        for (size_t scoreIndex = 0; scoreIndex < c_numScores; ++scoreIndex)
+        {
+            // make the axis mask for this score index. we are scoring within a specific subspace.
+            std::array<bool, DIMENSION> axisMask;
+            for (size_t i = 0; i < DIMENSION; ++i)
+                axisMask[i] = (scoreIndex & (size_t(1) << i)) ? false : true;
+
+            // for each candidate in this score index...
+            for (size_t candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
+            {
+                const T& candidate = candidates[candidateIndex];
+
+                // calculate the score of the candidate.
+                // the score is the minimum distance to any other points
+                float minimumDifferenceScore = FLT_MAX;
+                for (int checkItemIndex = 0; checkItemIndex < itemIndex; ++checkItemIndex)
+                {
+                    float distSq = 0.0f;
+                    for (int i = 0; i < DIMENSION; ++i)
+                    {
+                        if (!axisMask[i])
+                            continue;
+
+                        float diff = fabsf(results[checkItemIndex][i] - candidate[i]);
+                        if (diff > 0.5f)
+                            diff = 1.0f - diff;
+                        distSq += diff * diff;
+                    }
+                    minimumDifferenceScore = std::min(minimumDifferenceScore, distSq);
+                }
+
+                scores[candidateIndex].index = candidateIndex;
+                scores[candidateIndex].score = minimumDifferenceScore;
+            }
+
+            // sort the scores from high to low
+            std::sort(
+                scores.begin(),
+                scores.end(),
+                [] (const CandidateScore& A, const CandidateScore& B)
+                {
+                    return A.score > B.score;
+                }
+            );
+
+            // add the rank of this score a score for each candidate
+            for (size_t candidateIndex = 0; candidateIndex < candidateCount; ++candidateIndex)
+                overallScores[scores[candidateIndex].index].score += float(candidateIndex);
+        }
+
+        // sort the overall scores from low to high
+        std::sort(
+            overallScores.begin(),
+            overallScores.end(),
+            [] (const CandidateScore& A, const CandidateScore& B)
+            {
+                return A.score < B.score;
+            }
+        );
+
+        // keep the point that had the lowest summed rank
+        results[itemIndex] = candidates[overallScores[0].index];
+
+        if (reportProgress)
+        {
+            int percent = int(100.0f * float(itemIndex) / float(desiredItemCount));
+            if (lastPercent != percent)
+            {
+                lastPercent = percent;
+                printf("\rMaking Points: %i%%", lastPercent);
+            }
+        }
+    }
+
+    if (reportProgress)
+    {
+        printf("\rMaking Points: 100%%\n");
+    }
+}
+
 template <size_t DIMENSION, size_t PARTITIONS, bool EXTRAPENALTY>
 void GoodCandidateAlgorithmAccell(std::vector< std::array<float, DIMENSION>>& results, size_t desiredItemCount, int candidateMultiplier, bool reportProgress)
 {
@@ -621,6 +626,23 @@ void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints)
     {
         points[i][0] = fmodf(0.5f + a1 * float(i), 1.0f);
         points[i][1] = fmodf(0.5f + a2 * float(i), 1.0f);
+    }
+}
+
+void GeneratePoints_GoldenRatio2(std::vector<Vec2>& points, size_t numPoints)
+{
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    static const float a1 = 1.0f / c_goldenRatio2;
+    static const float a2 = 1.0f / (c_goldenRatio2 * c_goldenRatio2);
+
+    static const float c_magicNumber = 0.732f;
+
+    points.resize(numPoints);
+    for (size_t i = 0; i < numPoints; ++i)
+    {
+        points[i][0] = fmodf(dist(RNG()) * c_magicNumber + a1 * float(i) / sqrtf(float(i + 1)), 1.0f);
+        points[i][1] = fmodf(dist(RNG()) * c_magicNumber + a2 * float(i) / sqrtf(float(i + 1)), 1.0f);
     }
 }
 
@@ -808,6 +830,8 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
     yAxisMin = log10f(yAxisMin);
     yAxisMax = log10f(yAxisMax);
 
+    // TODO: use golden ratio to make colors
+
     // draw the graph
     uint8 colors[9][3] =
     {
@@ -945,6 +969,12 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* need to figure out how to calculate: spectrum radial average, spectrum anisotropy, 1d power specutrum (vs the 2d power spectrum)
+
+* soft shadow of a sphere on a plane
+
+* for integration, average multiple runs
 
 * use acceleration structure for blue noise too.
 
