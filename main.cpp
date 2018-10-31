@@ -636,13 +636,13 @@ void GeneratePoints_GoldenRatio2(std::vector<Vec2>& points, size_t numPoints)
     static const float a1 = 1.0f / c_goldenRatio2;
     static const float a2 = 1.0f / (c_goldenRatio2 * c_goldenRatio2);
 
-    static const float c_magicNumber = 0.732f;
+    static const float c_magicNumber = 0.732f;// *0.125f;
 
     points.resize(numPoints);
     for (size_t i = 0; i < numPoints; ++i)
     {
-        points[i][0] = fmodf(dist(RNG()) * c_magicNumber + a1 * float(i) / sqrtf(float(i + 1)), 1.0f);
-        points[i][1] = fmodf(dist(RNG()) * c_magicNumber + a2 * float(i) / sqrtf(float(i + 1)), 1.0f);
+        points[i][0] = fmodf(dist(RNG()) * c_magicNumber / sqrtf(float(i + 1)) + a1 * float(i), 1.0f);
+        points[i][1] = fmodf(dist(RNG()) * c_magicNumber / sqrtf(float(i + 1)) + a2 * float(i), 1.0f);
     }
 }
 
