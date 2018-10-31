@@ -636,7 +636,7 @@ void GeneratePoints_GoldenRatio2(std::vector<Vec2>& points, size_t numPoints)
     static const float a1 = 1.0f / c_goldenRatio2;
     static const float a2 = 1.0f / (c_goldenRatio2 * c_goldenRatio2);
 
-    static const float c_magicNumber = 0.732f;// *0.125f;
+    static const float c_magicNumber = 0.732f;// / 8.0f;
 
     points.resize(numPoints);
     for (size_t i = 0; i < numPoints; ++i)
@@ -969,6 +969,8 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* add a histogram of some kind to the projected axes
 
 * need to figure out how to calculate: spectrum radial average, spectrum anisotropy, 1d power specutrum (vs the 2d power spectrum)
 
