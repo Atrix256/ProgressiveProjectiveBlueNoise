@@ -37,6 +37,7 @@ static const float c_referenceValue_Bilinear = 0.25f;
 static const float c_goldenRatio2 = 1.32471795724474602596f;
 
 typedef std::array<float, 2> Vec2;
+typedef std::array<float, 3> Vec3;
 
 typedef void(*GeneratePointsFN)(std::vector<Vec2>& points, size_t numPoints);
 
@@ -806,6 +807,35 @@ void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label
     Integrate(SampleImage_Bilinear, points, c_referenceValue_Bilinear, log.logs[4], log.errors[noiseType][4]);
 }
 
+// Note: could use generalized golden ratio to come up with parameters to S and/or V too by making 2d or 3d low discrepancy sequences.
+// generalized golden ratio here: http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
+Vec3 HUEtoRGB(float H)
+{
+    Vec3 ret;
+    ret[0] = Clamp(abs(H * 6.0f - 3.0f) - 1.0f, 0.0f, 1.0f);
+    ret[1] = Clamp(2.0f - abs(H * 6.0f - 2.0f), 0.0f, 1.0f);
+    ret[2] = Clamp(2.0f - abs(H * 6.0f - 4.0f), 0.0f, 1.0f);
+    return ret;
+}
+
+Vec3 HSVtoRGB(const Vec3& HSV)
+{
+    Vec3 RGB = HUEtoRGB(HSV[0]);
+
+    Vec3 ret;
+    for (int i = 0; i < 3; ++i)
+        ret[i] = ((RGB[i] - 1.0f) * HSV[1] + 1.0f) * HSV[2];
+    return ret;
+}
+
+Vec3 IndexToColor(int index)
+{
+    // use the golden ratio to make N colors that are very different from each other.
+    static const float c_goldenRatioConjugate = 0.618033988749895f;
+    float h = std::fmodf(c_goldenRatioConjugate * float(index), 1.0f);
+    return HSVtoRGB({ h, 0.75f, 0.95f });
+}
+
 void MakeErrorGraph(const Log& log, int test, const char* fileName)
 {
     Image image(GRAPH_IMAGE_SIZE(), GRAPH_IMAGE_SIZE());
@@ -830,27 +860,16 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
     yAxisMin = log10f(yAxisMin);
     yAxisMax = log10f(yAxisMax);
 
-    // TODO: use golden ratio to make colors
-
-    // draw the graph
-    uint8 colors[9][3] =
-    {
-        {255, 0, 0},
-        {0, 255, 0},
-        {0, 0, 255},
-        {0, 255, 255},
-        {255, 0, 255},
-        {255, 255, 0},
-        {128, 0, 0},
-        {0, 128, 0},
-        {0, 0, 128},
-    };
-
     int colorIndex = 0;
     for (int sampleType = 0; sampleType < log.errors.size(); ++sampleType)
     {
         if (sampleType < 3)
             continue;
+
+        Vec3 colorFloat = IndexToColor(colorIndex);
+        uint8 color[3];
+        for (int i = 0; i < 3; ++i)
+            color[i] = uint8(Clamp(colorFloat[i] * 255.0f + 0.5f, 0.0f, 255.0f));
 
         bool firstPoint = true;
         Vec2 lastUV;
@@ -878,7 +897,7 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
                 int x2 = int(0.5f + uv[0] * float(GRAPH_IMAGE_SIZE()));
                 int y2 = int(0.5f + uv[1] * float(GRAPH_IMAGE_SIZE()));
 
-                DrawLine(image, x1, y1, x2, y2, colors[colorIndex][0], colors[colorIndex][1], colors[colorIndex][2]);
+                DrawLine(image, x1, y1, x2, y2, color[0], color[1], color[2]);
             }
             lastUV = uv;
         }
@@ -888,8 +907,6 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
     // TODO: make legend somehow. maybe a source image that gets loaded and slapped on/
 
     // TODO: draw axis loglines?
-
-    // TODO: use golden ratio to come up with colors for each noise type based on noise index?
 
     SaveImage(fileName, image);
 }
@@ -969,6 +986,8 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* combine the dft and dft raw images into a single image (side by side?)
 
 * add a histogram of some kind to the projected axes
 
