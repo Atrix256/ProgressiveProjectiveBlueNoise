@@ -14,7 +14,7 @@ static const float c_pi = 3.14159265359f;
 
 struct Image
 {
-    Image(int width, int height)
+    Image(int width=0, int height=0)
     {
         m_width = width;
         m_height = height;
@@ -259,6 +259,36 @@ void ClearImage(Image& image, uint8 R, uint8 G, uint8 B)
         pixel[2] = B;
         pixel[3] = 255;
         pixel += 4;
+    }
+}
+
+// -------------------------------------------------------------------------------
+void AppendImageVertical(Image& result, const Image& top, const Image& bottom)
+{
+    int width = std::max(top.m_width, bottom.m_width);
+    int height = top.m_height + bottom.m_height;
+    result = Image(width, height);
+
+    // top image
+    {
+        const uint8* srcRow = top.m_pixels.data();
+        for (int y = 0; y < top.m_height; ++y)
+        {
+            uint8* destRow = &result.m_pixels[y*width * 4];
+            memcpy(destRow, srcRow, top.m_width * 4);
+            srcRow += top.m_width * 4;
+        }
+    }
+
+    // bottom image
+    {
+        const uint8* srcRow = bottom.m_pixels.data();
+        for (int y = 0; y < bottom.m_height; ++y)
+        {
+            uint8* destRow = &result.m_pixels[(y+top.m_height)*width * 4];
+            memcpy(destRow, srcRow, bottom.m_width * 4);
+            srcRow += bottom.m_width * 4;
+        }
     }
 }
 

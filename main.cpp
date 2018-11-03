@@ -785,10 +785,11 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
         DFTImage(imageSamples, imageSamplesDFTComplex, true);
         Image imageSamplesDFT(imageSamples.m_width, imageSamples.m_height);
         GetMagnitudeData(imageSamplesDFTComplex, imageSamplesDFT);
+
+        Image dft;
+        AppendImageVertical(dft, imageSamples, imageSamplesDFT);
         sprintf_s(fileName, "out/samplesdft_%s.png", label);
-        SaveImage(fileName, imageSamplesDFT);
-        sprintf_s(fileName, "out/samplesdftraw_%s.png", label);
-        SaveImage(fileName, imageSamples);
+        SaveImage(fileName, dft);
     }
 }
 
@@ -1000,9 +1001,7 @@ int main(int argc, char **argv)
 }
 
 /*
-TODO:
-
-* combine the dft and dft raw images into a single image (side by side?)
+TODO:\
 
 * add a histogram of some kind to the projected axes
 
@@ -1010,31 +1009,21 @@ TODO:
 
 * soft shadow of a sphere on a plane
 
-* for integration, average multiple runs
+* for integration of randomized techniques, average multiple runs
 
 * use acceleration structure for blue noise too.
 
 * how to compare projblue and projblue2?
+ * integration
+ * lower sample counts shows the projection stuff more easily
 * need an anisotropy thingy from the DFT for one
 * need a histogram of projected points i think.
 
-* there's a crash when some of the sampling is disabled. (eg white noise)
-
-* formalize the tests too
-
 * in good candidate algorithm, rename scores terminology to subspaces
-
-* maybe have regular blue noise use acceleration structure too? unsure if needed.
 
 * test projective blue noise with lower sample count but higher multiplier
  * find a good value for projective blue noise, even if it's restrictively high?
  * should be better after acceleration structures are added
-
-* acceleration structure for blue noise and projective blue noise
-
-* flatten the best / good candidate so it doesn't take lambdas, and knows how to do comparisons / generation internally for vector dimensions.
-
-* make the tests and sample types be structs so fewer magic numbers
 
 * get stuff from email.
  * like the other golden ratio pattern w/ randomization.
