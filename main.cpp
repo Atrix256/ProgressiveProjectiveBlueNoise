@@ -800,9 +800,9 @@ void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label
     MakeSamplesImage(points, label);
 
     // test the sample points for integration
-    Integrate(SampleImage_Disk, points, c_referenceValue_Disk, log.logs[0], log.errors[noiseType][0]);
+    Integrate(SampleImage_Disk,     points, c_referenceValue_Disk,     log.logs[0], log.errors[noiseType][0]);
     Integrate(SampleImage_Triangle, points, c_referenceValue_Triangle, log.logs[1], log.errors[noiseType][1]);
-    Integrate(SampleImage_Step, points, c_referenceValue_Step, log.logs[2], log.errors[noiseType][2]);
+    Integrate(SampleImage_Step,     points, c_referenceValue_Step,     log.logs[2], log.errors[noiseType][2]);
     Integrate(SampleImage_Gaussian, points, c_referenceValue_Gaussian, log.logs[3], log.errors[noiseType][3]);
     Integrate(SampleImage_Bilinear, points, c_referenceValue_Bilinear, log.logs[4], log.errors[noiseType][4]);
 }
@@ -846,14 +846,24 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
     float xAxisMax = ceilf(log10f(float(NUM_SAMPLES())));
 
     // get the y axis min and max
-    float yAxisMin = log.errors[0][test][0];
-    float yAxisMax = yAxisMin;
+    float yAxisMin = 0.0f;
+    float yAxisMax = 0.0f;
+    bool foundSample = false;
     for (auto& a : log.errors)
     {
         for (auto& b : a[test])
         {
-            yAxisMin = std::min(yAxisMin, b);
-            yAxisMax = std::max(yAxisMax, b);
+            if (foundSample)
+            {
+                yAxisMin = std::min(yAxisMin, b);
+                yAxisMax = std::max(yAxisMax, b);
+            }
+            else
+            {
+                foundSample = true;
+                yAxisMin = b;
+                yAxisMax = b;
+            }
         }
     }
     yAxisMin = std::max(yAxisMin, 0.00001f);
@@ -863,9 +873,6 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
     int colorIndex = 0;
     for (int sampleType = 0; sampleType < log.errors.size(); ++sampleType)
     {
-        if (sampleType < 3)
-            continue;
-
         Vec3 colorFloat = IndexToColor(colorIndex);
         uint8 color[3];
         for (int i = 0; i < 3; ++i)
@@ -873,7 +880,7 @@ void MakeErrorGraph(const Log& log, int test, const char* fileName)
 
         bool firstPoint = true;
         Vec2 lastUV;
-        for (int sampleIndex = 0; sampleIndex < NUM_SAMPLES(); ++sampleIndex)
+        for (int sampleIndex = 0; sampleIndex < log.errors[sampleType][test].size(); ++sampleIndex)
         {
             float logSample = log10f(float(sampleIndex+1));
             float logError = log.errors[sampleType][test][sampleIndex] > 0.0f ? log10f(log.errors[sampleType][test][sampleIndex]) : yAxisMin;
@@ -927,9 +934,17 @@ int main(int argc, char **argv)
     Log log;
     for (auto& l : log.logs)
     {
-        LogLineAppend(l, 0, "\"Sample\",\"N^-0.5\",\"N^-0.75\",\"N^-1\",\"White Noise\",\"Golden Ratio\",\"Blue Noise\",\"Projective Blue Noise\"");
+        LogLineAppend(l, 0, "\"Sample\",\"N^-0.5\",\"N^-0.75\",\"N^-1\"");
+
+        for (int i = 0; i < c_numSamplingPatterns; ++i)
+        {
+            LogLineAppend(l, 0, ",\"");
+            LogLineAppend(l, 0, g_samplingPatterns[i].nameHuman);
+            LogLineAppend(l, 0, "\"");
+        }
+
         for (int i = 1; i <= NUM_SAMPLES(); ++i)
-            LogLineAppend(l, i, "\"%i\",\"%f\",\"%f\"", i, powf(float(i), -0.5f), powf(float(i), -0.75f));
+            LogLineAppend(l, i, "\"%i\",\"%f\",\"%f\",\"%f\"", i, powf(float(i), -0.5f), powf(float(i), -0.75f), powf(float(i), -1.0f));
     }
     for (auto& e : log.errors[c_numSamplingPatterns+0])
     {
