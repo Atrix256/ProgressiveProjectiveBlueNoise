@@ -5,6 +5,9 @@
 #include <stdint.h>
 #include <thread>
 #include <atomic>
+#include <algorithm>
+
+#include "stb_image_write.h"
 
 typedef uint8_t uint8;
 
@@ -29,6 +32,23 @@ struct Image
 
 // -------------------------------------------------------------------------------
 
+struct ImageFloat
+{
+    ImageFloat(int width = 0, int height = 0)
+    {
+        m_width = width;
+        m_height = height;
+        m_pixels.resize(m_width*m_height * 4); // 4 channels per pixel
+        std::fill(m_pixels.begin(), m_pixels.end(), 1.0f);
+    }
+
+    int m_width;
+    int m_height;
+    std::vector<float> m_pixels;
+};
+
+// -------------------------------------------------------------------------------
+
 struct ImageComplex
 {
     ImageComplex(int width, int height)
@@ -46,7 +66,19 @@ struct ImageComplex
 
 // -------------------------------------------------------------------------------
 
-std::complex<float> DFTPixel (const Image &image, int K, int L)
+inline float Clamp(float x, float min, float max)
+{
+    if (x <= min)
+        return min;
+    else if (x >= max)
+        return max;
+    else
+        return x;
+}
+
+// -------------------------------------------------------------------------------
+
+inline std::complex<float> DFTPixel (const Image &image, int K, int L)
 {
     std::complex<float> ret(0.0f, 0.0f);
 
@@ -66,7 +98,7 @@ std::complex<float> DFTPixel (const Image &image, int K, int L)
     return ret;
 }
 
-void DFTImage (const Image &srcImage, ImageComplex &destImage, bool printProgress)
+inline void DFTImage (const Image &srcImage, ImageComplex &destImage, bool printProgress)
 {
     // calculate 2d dft (brute force, not using fast fourier transform)
     destImage = ImageComplex(srcImage.m_width, srcImage.m_height);
@@ -120,7 +152,7 @@ void DFTImage (const Image &srcImage, ImageComplex &destImage, bool printProgres
         printf("            \rDFT: 100%%\n");
 }
 
-void GetMagnitudeData (const ImageComplex& srcImage, Image& destImage)
+inline void GetMagnitudeData (const ImageComplex& srcImage, Image& destImage)
 {
     // size the output image
     destImage = Image(srcImage.m_width, srcImage.m_height);
@@ -170,7 +202,7 @@ void GetMagnitudeData (const ImageComplex& srcImage, Image& destImage)
 }
 
 // -------------------------------------------------------------------------------
-void SaveImage(const char* fileName, Image& image)
+inline void SaveImage(const char* fileName, Image& image)
 {
     image.m_pixels[((image.m_width*image.m_height - 1) * 4) + 3] = 0; // make the last pixel be transparent so eg twitter doesn't use jpg compression.
     stbi_write_png(fileName, image.m_width, image.m_height, 4, image.m_pixels.data(), 0);
@@ -178,7 +210,7 @@ void SaveImage(const char* fileName, Image& image)
 
 // -------------------------------------------------------------------------------
 
-float SmoothStep(float value, float min, float max)
+inline float SmoothStep(float value, float min, float max)
 {
     float x = (value - min) / (max - min);
     x = std::min(x, 1.0f);
@@ -197,7 +229,7 @@ T Lerp(T A, T B, float t)
 
 // -------------------------------------------------------------------------------
 
-void DrawLine(Image& image, int x1, int y1, int x2, int y2, uint8 R, uint8 G, uint8 B)
+inline void DrawLine(Image& image, int x1, int y1, int x2, int y2, uint8 R, uint8 G, uint8 B)
 {
     // pad the AABB of pixels we scan, to account for anti aliasing
     int startX = std::max(std::min(x1, x2) - 4, 0);
@@ -249,7 +281,7 @@ void DrawLine(Image& image, int x1, int y1, int x2, int y2, uint8 R, uint8 G, ui
 
 // -------------------------------------------------------------------------------
 
-void ClearImage(Image& image, uint8 R, uint8 G, uint8 B)
+inline void ClearImage(Image& image, uint8 R, uint8 G, uint8 B)
 {
     uint8* pixel = image.m_pixels.data();
     for (int i = 0, c = image.m_width * image.m_height; i < c; ++i)
@@ -263,7 +295,7 @@ void ClearImage(Image& image, uint8 R, uint8 G, uint8 B)
 }
 
 // -------------------------------------------------------------------------------
-void AppendImageVertical(Image& result, const Image& top, const Image& bottom)
+inline void AppendImageVertical(Image& result, const Image& top, const Image& bottom)
 {
     int width = std::max(top.m_width, bottom.m_width);
     int height = top.m_height + bottom.m_height;
@@ -294,7 +326,7 @@ void AppendImageVertical(Image& result, const Image& top, const Image& bottom)
 
 // -------------------------------------------------------------------------------
 
-void DrawCircle(Image& image, int cx, int cy, int radius, uint8 R, uint8 G, uint8 B)
+inline void DrawCircle(Image& image, int cx, int cy, int radius, uint8 R, uint8 G, uint8 B)
 {
     int startX = std::max(cx - radius - 4, 0);
     int startY = std::max(cy - radius - 4, 0);
@@ -323,4 +355,14 @@ void DrawCircle(Image& image, int cx, int cy, int radius, uint8 R, uint8 G, uint
             pixel += 4;
         }
     }
+}
+
+// -------------------------------------------------------------------------------
+
+inline void ImageFloatToImage(const ImageFloat& imageFloat, Image& image)
+{
+    image = Image(imageFloat.m_width, imageFloat.m_height);
+
+    for (size_t pixelIndex = 0; pixelIndex < imageFloat.m_width * imageFloat.m_height * 4; ++pixelIndex)
+        image.m_pixels[pixelIndex] = uint8(Clamp(imageFloat.m_pixels[pixelIndex] * 255.0f + 0.5f, 0.0f, 255.0f));
 }
