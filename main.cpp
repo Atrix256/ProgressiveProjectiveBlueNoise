@@ -1020,6 +1020,8 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* multithread the raytracing?
+
 * we shouldn't generate new points for ray tracing, we should use existing
  * generate the max # of points between the # needed for the 2d thing, and needed for ray tracing.
  * make them into globals and pass the points to the ray tracer.
