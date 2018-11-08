@@ -136,8 +136,8 @@ static Sphere s_Spheres[] =
 
 static Triangle s_Triangles[] =
 {
-    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {}, {0.9f, 0.9f, 0.9f}},
-    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {-10.0f, -2.0f, 20.0f}, {}, {0.9f, 0.9f, 0.9f}},
+    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {}, {0.7f, 0.7f, 0.7f}},
+    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {-10.0f, -2.0f, 20.0f}, {}, {0.7f, 0.7f, 0.7f}},
 };
 
 static Sphere s_Lights[] =
@@ -303,9 +303,9 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
     if (initialHitInfo.time == FLT_MAX)
     {
         // TODO: formalize ambient lighting. maybe make it directional.
-        pixel[0] = 0.1f;
-        pixel[1] = 0.1f;
-        pixel[2] = 0.1f;
+        pixel[0] = 0.5f;
+        pixel[1] = 0.5f;
+        pixel[2] = 0.5f;
         return;
     }
 
@@ -313,11 +313,11 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
 
     for (size_t sampleIndex = startSampleCount; sampleIndex < endSampleCount; ++sampleIndex)
     {
-        float lerpAmount = 1.0f / float(startSampleCount + 1);
+        float lerpAmount = 1.0f / float(sampleIndex + 1);
 
         // TODO get numbers from samples
-        float rand1 = 0.5f;
-        float rand2 = 0.5f;
+        float rand1 = 0.0f;
+        float rand2 = 0.0f;
 
         // sample each light
         Vec3 sampleResult = { 0.0f, 0.0f, 0.0f };
@@ -351,12 +351,10 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
                 float nDotL = std::max(Dot(initialHitInfo.normal, l), 0.0f);
                 sampleResult += initialHitInfo.color * s_Lights[lightIndex].color * nDotL * omega / c_pi;
             }
-            else
-            {
-                // TODO: formalize ambient lighting. maybe make it directional.
-                sampleResult += initialHitInfo.color * 0.1f;
-            }
         }
+
+        // TODO: formalize ambient lighting. maybe make it directional.
+        sampleResult += initialHitInfo.color * 0.5f;
 
         pixel[0] = Lerp(pixel[0], sampleResult[0], lerpAmount);
         pixel[1] = Lerp(pixel[1], sampleResult[1], lerpAmount);
@@ -394,14 +392,6 @@ void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCo
             rayPos += c_cameraRight * c_windowRight * u;
             rayPos += c_ptCameraUp * c_windowTop * v;
             Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
-
-            // TODO: temp debug!
-            /*
-            pixel[0] = u * 0.5f + 0.5f;
-            pixel[1] = v * 0.5f + 0.5f;
-            pixel[2] = 0.0f;
-            pixel[3] = 1.0f;
-            */
 
             SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount);
             pixel += 4;
