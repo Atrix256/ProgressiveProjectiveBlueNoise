@@ -292,7 +292,7 @@ void RayIntersectScene(const Vec3& rayPos, const Vec3& rayDir, RayHitInfo& info,
     }
 }
 
-void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t startSampleCount, size_t endSampleCount)
+void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points)
 {
     // TODO: set up a good scene
     // TODO: use sample arrays passed in as source for finding location to shoot ray towards
@@ -315,9 +315,9 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
     {
         float lerpAmount = 1.0f / float(sampleIndex + 1);
 
-        // TODO get numbers from samples
-        float rand1 = 0.0f;
-        float rand2 = 0.0f;
+        // use the samples passed to us
+        float rand1 = points[sampleIndex][0];
+        float rand2 = points[sampleIndex][1];
 
         // sample each light
         Vec3 sampleResult = { 0.0f, 0.0f, 0.0f };
@@ -362,7 +362,7 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
     }
 }
 
-void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount)
+void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points)
 {
     if (!g_initialized)
         Initialize();
@@ -393,7 +393,7 @@ void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCo
             rayPos += c_ptCameraUp * c_windowTop * v;
             Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
 
-            SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount);
+            SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points);
             pixel += 4;
         }
     }

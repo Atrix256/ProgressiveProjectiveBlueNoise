@@ -1,5 +1,8 @@
 #pragma once
 
 #include "image.h"
+#include <vector>
 
-void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount);
+typedef std::array<float, 2> Vec2;
+
+void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points);

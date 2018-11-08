@@ -73,6 +73,7 @@ struct Log
 {
     std::array<std::vector<std::string>, 5> logs;
     std::array<std::array<std::vector<float>, 5>, c_numSamplingPatterns+3> errors;  // indexed by: [sampleType][test]
+    std::array<std::vector<Vec2>, c_numSamplingPatterns> points;
 };
 
 typedef uint8_t uint8;
@@ -785,41 +786,43 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
     }
 }
 
-void DoTestRaytrace(const GeneratePoints& generatePoints, const char* label)
+void DoTestRaytrace(const std::vector<Vec2>& points, const char* label)
 {
     ImageFloat resultFloat(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
     Image result;
     char fileName[256];
 
-    RaytraceTest(resultFloat, 0, 10);
+    RaytraceTest(resultFloat, 0, 10, points);
     ImageFloatToImage(resultFloat, result);
     sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 10);
     SaveImage(fileName, result);
 
-    RaytraceTest(resultFloat, 10, 100);
+    RaytraceTest(resultFloat, 10, 100, points);
     ImageFloatToImage(resultFloat, result);
     sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 100);
     SaveImage(fileName, result);
 
-    RaytraceTest(resultFloat, 100, 1000);
+    // TODO: make 1000 points
+    /*
+    RaytraceTest(resultFloat, 100, 1000, points);
     ImageFloatToImage(resultFloat, result);
     sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 1000);
     SaveImage(fileName, result);
+    */
 }
 
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
 {
     // generate the sample points and save them as an image
-    std::vector<Vec2> points;
-    generatePoints(points, NUM_SAMPLES());
-    MakeSamplesImage(points, label);
+    generatePoints(log.points[noiseType], NUM_SAMPLES());
+    MakeSamplesImage(log.points[noiseType], label);
 
     // test the sample points for integration
-    Integrate(SampleImage_Disk,     points, c_referenceValue_Disk,     log.logs[0], log.errors[noiseType][0]);
-    Integrate(SampleImage_Triangle, points, c_referenceValue_Triangle, log.logs[1], log.errors[noiseType][1]);
-    Integrate(SampleImage_Step,     points, c_referenceValue_Step,     log.logs[2], log.errors[noiseType][2]);
-    Integrate(SampleImage_Gaussian, points, c_referenceValue_Gaussian, log.logs[3], log.errors[noiseType][3]);
-    Integrate(SampleImage_Bilinear, points, c_referenceValue_Bilinear, log.logs[4], log.errors[noiseType][4]);
+    Integrate(SampleImage_Disk,     log.points[noiseType], c_referenceValue_Disk,     log.logs[0], log.errors[noiseType][0]);
+    Integrate(SampleImage_Triangle, log.points[noiseType], c_referenceValue_Triangle, log.logs[1], log.errors[noiseType][1]);
+    Integrate(SampleImage_Step,     log.points[noiseType], c_referenceValue_Step,     log.logs[2], log.errors[noiseType][2]);
+    Integrate(SampleImage_Gaussian, log.points[noiseType], c_referenceValue_Gaussian, log.logs[3], log.errors[noiseType][3]);
+    Integrate(SampleImage_Bilinear, log.points[noiseType], c_referenceValue_Bilinear, log.logs[4], log.errors[noiseType][4]);
 }
 
 // Note: could use generalized golden ratio to come up with parameters to S and/or V too by making 2d or 3d low discrepancy sequences.
@@ -995,7 +998,7 @@ int main(int argc, char **argv)
         DoTest2D(pattern.generatePoints, log, pattern.nameFile, (int)samplingPattern);
 
         printf("Raytracing...\n");
-        DoTestRaytrace(pattern.generatePoints, pattern.nameFile);
+        DoTestRaytrace(log.points[samplingPattern], pattern.nameFile);
     }
 
     // make error graphs
@@ -1019,6 +1022,8 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* make a header for vec2/vec3
 
 * multithread the raytracing?
 
