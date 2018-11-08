@@ -1,4 +1,4 @@
-#include "pathtrace.h"
+#include "raytrace.h"
 #include <array>
 
 typedef std::array<float, 3> Vec3;
@@ -103,7 +103,7 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
     // TODO: Shade with N dot L directional shadowed lighting 
     // TODO: Use a "point can see point?" query function for each sample to integrate result.
     // TODO: use sample arrays passed in as source for finding location to shoot ray towards
-    // TODO: calculate triangle normals on the first call to PathtraceTest(). have a global bool that remembers if the init has happened or not.
+    // TODO: calculate triangle normals on the first call to RaytraceTest(). have a global bool that remembers if the init has happened or not.
     // TODO: multiple lights? or no? If so, shoot a ray to each light each frame to get result to integrate.
     // TODO: What is shadow casting geo? a couple spheres and a couple triangles?
     // TODO: should the light have a brightness?
@@ -120,7 +120,7 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
     }
 }
 
-void PathtraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount)
+void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount)
 {
     const float c_aspectRatio = float(image.m_width) / float(image.m_height);
     const float c_cameraHorizFOV = c_ptCameraVerticalFOV * c_aspectRatio;

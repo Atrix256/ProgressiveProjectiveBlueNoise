@@ -7,7 +7,7 @@
 #include <stdarg.h>
 
 #include "image.h"
-#include "pathtrace.h"
+#include "raytrace.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
@@ -16,7 +16,7 @@
 #define TEST_IMAGE_SIZE() 128 // in pixels, on each axis
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
-#define PATHTRACE_IMAGE_SIZE() 512
+#define RAYTRACE_IMAGE_SIZE() 512
 #define NUM_SAMPLES() 500
 #define DO_SLOW_SAMPLES() true
 
@@ -785,25 +785,25 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
     }
 }
 
-void DoTestPathtrace(const GeneratePoints& generatePoints, const char* label)
+void DoTestRaytrace(const GeneratePoints& generatePoints, const char* label)
 {
-    ImageFloat resultFloat(PATHTRACE_IMAGE_SIZE(), PATHTRACE_IMAGE_SIZE());
+    ImageFloat resultFloat(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
     Image result;
     char fileName[256];
 
-    PathtraceTest(resultFloat, 0, 10);
+    RaytraceTest(resultFloat, 0, 10);
     ImageFloatToImage(resultFloat, result);
-    sprintf_s(fileName, "out/pathtrace_%s_%i.png", label, 10);
+    sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 10);
     SaveImage(fileName, result);
 
-    PathtraceTest(resultFloat, 10, 100);
+    RaytraceTest(resultFloat, 10, 100);
     ImageFloatToImage(resultFloat, result);
-    sprintf_s(fileName, "out/pathtrace_%s_%i.png", label, 100);
+    sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 100);
     SaveImage(fileName, result);
 
-    PathtraceTest(resultFloat, 100, 1000);
+    RaytraceTest(resultFloat, 100, 1000);
     ImageFloatToImage(resultFloat, result);
-    sprintf_s(fileName, "out/pathtrace_%s_%i.png", label, 1000);
+    sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 1000);
     SaveImage(fileName, result);
 }
 
@@ -994,8 +994,8 @@ int main(int argc, char **argv)
         printf("%s...\n", pattern.nameHuman);
         DoTest2D(pattern.generatePoints, log, pattern.nameFile, (int)samplingPattern);
 
-        printf("Pathtracing...");
-        DoTestPathtrace(pattern.generatePoints, pattern.nameFile);
+        printf("Raytracing...");
+        DoTestRaytrace(pattern.generatePoints, pattern.nameFile);
     }
 
     // make error graphs
@@ -1020,12 +1020,9 @@ int main(int argc, char **argv)
 /*
 TODO:
 
-* does path trace need to be it's own cpp and h? may fit in pretty easily in this function.
- * also it's not really path tracing, just a soft shadows test. maybe rename the file and functions to reflect that?
-
-* we shouldn't generate new points for path tracing, we should use existing
- * generate the max # of points between the # needed for the 2d thing, and needed for path tracing.
- * make them into globals and pass the points to the path tracer.
+* we shouldn't generate new points for ray tracing, we should use existing
+ * generate the max # of points between the # needed for the 2d thing, and needed for ray tracing.
+ * make them into globals and pass the points to the ray tracer.
 
 * add a histogram of some kind to the projected axes
 

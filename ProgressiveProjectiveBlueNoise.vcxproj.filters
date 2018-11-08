@@ -2,10 +2,10 @@
 <Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
   <ItemGroup>
     <ClCompile Include="main.cpp" />
-    <ClCompile Include="pathtrace.cpp" />
+    <ClCompile Include="raytrace.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="image.h" />
-    <ClInclude Include="pathtrace.h" />
+    <ClInclude Include="raytrace.h" />
   </ItemGroup>
 </Project>
