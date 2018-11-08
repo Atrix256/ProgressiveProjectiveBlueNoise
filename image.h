@@ -363,6 +363,15 @@ inline void ImageFloatToImage(const ImageFloat& imageFloat, Image& image)
 {
     image = Image(imageFloat.m_width, imageFloat.m_height);
 
-    for (size_t pixelIndex = 0; pixelIndex < imageFloat.m_width * imageFloat.m_height * 4; ++pixelIndex)
-        image.m_pixels[pixelIndex] = uint8(Clamp(imageFloat.m_pixels[pixelIndex] * 255.0f + 0.5f, 0.0f, 255.0f));
+    for (size_t pixelIndex = 0; pixelIndex < imageFloat.m_width * imageFloat.m_height; ++pixelIndex)
+    {
+        for (size_t channelIndex = 0; channelIndex < 3; ++channelIndex)
+        {
+            float valueLinear = Clamp(imageFloat.m_pixels[pixelIndex * 4 + channelIndex], 0.0f, 1.0f);
+            float valuesRGB = powf(valueLinear, 2.2f);
+            image.m_pixels[pixelIndex * 4 + channelIndex] = uint8(valuesRGB * 255.0f + 0.5f);
+        }
+
+        image.m_pixels[pixelIndex * 4 + 3] = uint8(Clamp(imageFloat.m_pixels[pixelIndex * 4 + 3], 0.0f, 1.0f) * 255.0f + 0.5f);
+    }
 }
