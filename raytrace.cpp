@@ -292,10 +292,9 @@ void RayIntersectScene(const Vec3& rayPos, const Vec3& rayDir, RayHitInfo& info,
     }
 }
 
-void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points)
+void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, const Vec2& rnd)
 {
     // TODO: set up a good scene
-    // TODO: use sample arrays passed in as source for finding location to shoot ray towards
     // TODO: What is shadow casting geo? a couple spheres and a couple triangles?
 
     RayHitInfo initialHitInfo;
@@ -316,8 +315,9 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
         float lerpAmount = 1.0f / float(sampleIndex + 1);
 
         // use the samples passed to us
-        float rand1 = points[sampleIndex][0];
-        float rand2 = points[sampleIndex][1];
+        // decorrelate with Cranley Patterson Rotation
+        float rand1 = std::fmodf(points[sampleIndex][0] + rnd[0], 1.0f);
+        float rand2 = std::fmodf(points[sampleIndex][1] + rnd[1], 1.0f);
 
         // sample each light
         Vec3 sampleResult = { 0.0f, 0.0f, 0.0f };
@@ -362,7 +362,7 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
     }
 }
 
-void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points)
+void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, std::vector<Vec2>& whiteNoise)
 {
     if (!g_initialized)
         Initialize();
@@ -374,6 +374,7 @@ void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCo
     const Vec3 c_cameraRight = Cross(c_ptCameraUp, c_ptCameraFwd);
 
     float* pixel = image.m_pixels.data();
+    const Vec2* rnd = whiteNoise.data();
 
     for (size_t y = 0; y < image.m_height; ++y)
     {
@@ -393,8 +394,9 @@ void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCo
             rayPos += c_ptCameraUp * c_windowTop * v;
             Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
 
-            SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points);
+            SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, *rnd);
             pixel += 4;
+            ++rnd;
         }
     }
 }

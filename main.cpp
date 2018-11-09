@@ -17,7 +17,7 @@
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
 #define RAYTRACE_IMAGE_SIZE() 512
-#define NUM_SAMPLES() 500
+#define NUM_SAMPLES() 1000
 #define DO_SLOW_SAMPLES() true
 
 #define BLUENOISE_CANDIDATE_MULTIPLIER() 5
@@ -788,27 +788,37 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
 
 void DoTestRaytrace(const std::vector<Vec2>& points, const char* label)
 {
+    // make a white noise random number per pixel for Cranley Patterson Rotation.
+    static std::vector<Vec2> whiteNoise;
+    if (whiteNoise.size() == 0)
+    {
+        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+        whiteNoise.resize(RAYTRACE_IMAGE_SIZE() * RAYTRACE_IMAGE_SIZE());
+        for (Vec2& v : whiteNoise)
+        {
+            v[0] = dist(RNG());
+            v[1] = dist(RNG());
+        }
+    }
+
     ImageFloat resultFloat(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
     Image result;
     char fileName[256];
 
-    RaytraceTest(resultFloat, 0, 10, points);
+    RaytraceTest(resultFloat, 0, 10, points, whiteNoise);
     ImageFloatToImage(resultFloat, result);
     sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 10);
     SaveImage(fileName, result);
 
-    RaytraceTest(resultFloat, 10, 100, points);
+    RaytraceTest(resultFloat, 10, 100, points, whiteNoise);
     ImageFloatToImage(resultFloat, result);
     sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 100);
     SaveImage(fileName, result);
 
-    // TODO: make 1000 points
-    /*
-    RaytraceTest(resultFloat, 100, 1000, points);
+    RaytraceTest(resultFloat, 100, 1000, points, whiteNoise);
     ImageFloatToImage(resultFloat, result);
     sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 1000);
     SaveImage(fileName, result);
-    */
 }
 
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
@@ -1022,6 +1032,11 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+Note for how the raytracing works:
+ * use Cranley-Patterson rotation to decorrelate samples between pixels.
+ * aka pick a random number per pixel and add add that value to the samples, then use that value mod 1.
+ * using blue noise for this instead of white would be good for quality of results, but that seems like it wouldn't be appropriate for the testing.
 
 * make a header for vec2/vec3
 
