@@ -136,13 +136,13 @@ static Sphere s_Spheres[] =
 
 static Triangle s_Triangles[] =
 {
-    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {}, {0.7f, 0.7f, 0.7f}},
-    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {-10.0f, -2.0f, 20.0f}, {}, {0.7f, 0.7f, 0.7f}},
+    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {}, {0.5f, 0.5f, 0.5f}},
+    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {-10.0f, -2.0f, 20.0f}, {}, {0.5f, 0.5f, 0.5f}},
 };
 
 static Sphere s_Lights[] =
 {
-    {++g_nextId, {0.0f, 20.0f, 0.0f}, 10.0f, {10.0f, 10.0f, 10.0f}}
+    {++g_nextId, {-5.0f, 10.0f, -5.0f}, 1.0f, {10.0f, 10.0f, 10.0f}}
 };
 
 struct RayHitInfo
@@ -298,13 +298,13 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
     // TODO: What is shadow casting geo? a couple spheres and a couple triangles?
 
     RayHitInfo initialHitInfo;
-    RayIntersectScene<false>(rayPos, rayDir, initialHitInfo, false);
+    RayIntersectScene<true>(rayPos, rayDir, initialHitInfo, false);
     if (initialHitInfo.time == FLT_MAX)
     {
         // TODO: formalize ambient lighting. maybe make it directional.
-        pixel[0] = 0.5f;
-        pixel[1] = 0.5f;
-        pixel[2] = 0.5f;
+        pixel[0] = 0.125f;
+        pixel[1] = 0.125f;
+        pixel[2] = 0.125f;
         return;
     }
 
@@ -354,7 +354,7 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
         }
 
         // TODO: formalize ambient lighting. maybe make it directional.
-        sampleResult += initialHitInfo.color * 0.5f;
+        sampleResult += initialHitInfo.color * 0.125f;
 
         pixel[0] = Lerp(pixel[0], sampleResult[0], lerpAmount);
         pixel[1] = Lerp(pixel[1], sampleResult[1], lerpAmount);

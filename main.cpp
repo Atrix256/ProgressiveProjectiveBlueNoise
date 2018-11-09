@@ -1033,6 +1033,8 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* if there are specific locations that show off quality better in your final renders, grab them from the render and blow them up (nearest neighbor) to view them zoomed in more easily.
+
 Note for how the raytracing works:
  * use Cranley-Patterson rotation to decorrelate samples between pixels.
  * aka pick a random number per pixel and add add that value to the samples, then use that value mod 1.
