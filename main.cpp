@@ -16,7 +16,6 @@
 #define TEST_IMAGE_SIZE() 128 // in pixels, on each axis
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
-#define RAYTRACE_IMAGE_SIZE() 512
 #define NUM_SAMPLES() 1024
 #define DO_SLOW_SAMPLES() true
 
@@ -24,6 +23,9 @@
 
 #define PROJBLUENOISE_CANDIDATE_MULTIPLIER() 100
 #define PROJBLUENOISE_PARTITIONS() 10
+
+#define DO_RAYTRACING() false
+#define RAYTRACE_IMAGE_SIZE() 512
 
 #define DO_DFT() false
 #define DFT_IMAGE_SIZE() 256
@@ -886,6 +888,10 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
 
 void DoTestRaytrace(const std::vector<Vec2>& points, const char* label)
 {
+#if DO_RAYTRACING() == false
+    return;
+#endif
+
     // make a white noise random number per pixel for Cranley Patterson Rotation.
     static std::vector<Vec2> whiteNoise;
     if (whiteNoise.size() == 0)
@@ -910,9 +916,16 @@ void DoTestRaytrace(const std::vector<Vec2>& points, const char* label)
 
     for (size_t index = 0; index < sizeof(c_sampleCounts) / sizeof(c_sampleCounts[0]) - 1; ++index)
     {
-        RaytraceTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise);
+        RaytraceTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, true);
         ImageFloatToImage(resultFloat, result);
-        sprintf_s(fileName, "out/raytrace_%s_%zu.png", label, c_sampleCounts[index+1]);
+        sprintf_s(fileName, "out/raytrace/%s_%zu.png", label, c_sampleCounts[index+1]);
+        SaveImage(fileName, result);
+    }
+    for (size_t index = 0; index < sizeof(c_sampleCounts) / sizeof(c_sampleCounts[0]) - 1; ++index)
+    {
+        RaytraceTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, false);
+        ImageFloatToImage(resultFloat, result);
+        sprintf_s(fileName, "out/raytrace_correlated/%s_%zu.png", label, c_sampleCounts[index + 1]);
         SaveImage(fileName, result);
     }
 }
@@ -1128,12 +1141,15 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* maybe should do 2d and 1d zone plate tests too.
+
 * it seems like white noise (and GR2) aren't converging?! maybe try more samples to see if that's true or not.
 
 * try without decorrelation to see what it looks like.
 
 * if there are specific locations that show off quality better in your final renders, grab them from the render and blow them up (nearest neighbor) to view them zoomed in more easily.
  * yes, do this, and show an error metric for that tile, like projective blue noise does.
+ * and make a ground truth with like 100,000 white noise samples?
 
 * need owen scrambled hammersley
 

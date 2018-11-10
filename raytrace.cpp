@@ -316,6 +316,26 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
 
     Vec3 shadowRayStart = initialHitInfo.position + initialHitInfo.normal * 0.01f;
 
+    struct PrecalculatedLightData
+    {
+        Vec3 sw;
+        Vec3 su;
+        Vec3 sv;
+        float cosAMax;
+    };
+    std::vector<PrecalculatedLightData> precalculatedLightData;
+    precalculatedLightData.resize(sizeof(s_Lights) / sizeof(s_Lights[0]));
+    for (size_t lightIndex = 0; lightIndex < sizeof(s_Lights) / sizeof(s_Lights[0]); ++lightIndex)
+    {
+        // create a random direction towards sphere
+        // coord system for sampling: sw, su, sv
+        precalculatedLightData[lightIndex].sw = Normalize(s_Lights[lightIndex].position - initialHitInfo.position);
+        precalculatedLightData[lightIndex].su = Normalize(Cross(abs(precalculatedLightData[lightIndex].sw[0]) > 0.01f ? Vec3{ 0, 1, 0 } : Vec3{ 1, 0, 0 }, precalculatedLightData[lightIndex].sw));
+        precalculatedLightData[lightIndex].sv = Cross(precalculatedLightData[lightIndex].sw, precalculatedLightData[lightIndex].su);
+
+        precalculatedLightData[lightIndex].cosAMax = sqrt(1.0f - s_Lights[lightIndex].radius*s_Lights[lightIndex].radius / LengthSQ(initialHitInfo.position - s_Lights[lightIndex].position));
+    }
+
     for (size_t sampleIndex = startSampleCount; sampleIndex < endSampleCount; ++sampleIndex)
     {
         if (sampleIndex >= points.size())
@@ -332,22 +352,15 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
         Vec3 sampleResult = { 0.0f, 0.0f, 0.0f };
         for (size_t lightIndex = 0; lightIndex < sizeof(s_Lights) / sizeof(s_Lights[0]); ++lightIndex)
         {
-            // TODO: could precalculate much of this outside the loop! maybe have temp storage on the light for it?
-
-            // create a random direction towards sphere
-            // coord system for sampling: sw, su, sv
-            Vec3 sw = Normalize(s_Lights[lightIndex].position - initialHitInfo.position);
-            Vec3 su = Normalize(Cross(abs(sw[0]) > 0.01f ? Vec3{ 0, 1, 0 } : Vec3{ 1, 0, 0 }, sw));
-            Vec3 sv = Cross(sw, su);
+            auto& lightData = precalculatedLightData[lightIndex];
 
             // sample sphere by solid angle
-            float cosAMax = sqrt(1.0f - s_Lights[lightIndex].radius*s_Lights[lightIndex].radius / LengthSQ(initialHitInfo.position - s_Lights[lightIndex].position));
             float eps1 = rand1;
             float eps2 = rand2;
-            float cosA = 1.0f - eps1 + eps1 * cosAMax;
+            float cosA = 1.0f - eps1 + eps1 * lightData.cosAMax;
             float sinA = sqrt(1.0f - cosA * cosA);
             float phi = 2 * c_pi* eps2;
-            Vec3 l = su * cos(phi) * sinA + sv * sin(phi) * sinA + sw * cosA;
+            Vec3 l = lightData.su * cos(phi) * sinA + lightData.sv * sin(phi) * sinA + lightData.sw * cosA;
             l = Normalize(l);
 
             // raytrace against the scene
@@ -371,7 +384,7 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
     }
 }
 
-void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, std::vector<Vec2>& whiteNoise)
+void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, std::vector<Vec2>& whiteNoise, bool decorrelate)
 {
     if (!g_initialized)
         Initialize();
@@ -404,7 +417,7 @@ void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCo
                     float* pixel = &image.m_pixels[y*image.m_width*4];
                     const Vec2* rnd = &whiteNoise[y*image.m_width];
 
-                    // calculate the DFT for every pixel / frequency in this row
+                    // raytrace every pixel / frequency in this row
                     for (size_t x = 0; x < image.m_width; ++x)
                     {
                         float u = float(x) / float(image.m_width - 1);
@@ -421,7 +434,10 @@ void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCo
                         rayPos += c_ptCameraUp * c_windowTop * v;
                         Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
 
-                        SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, *rnd);
+                        if (decorrelate)
+                            SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, *rnd);
+                        else
+                            SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, Vec2{ 0.0f, 0.0f });
                         pixel += 4;
                         ++rnd;
                     }
