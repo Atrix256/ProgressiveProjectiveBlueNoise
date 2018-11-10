@@ -25,7 +25,7 @@
 #define PROJBLUENOISE_CANDIDATE_MULTIPLIER() 100
 #define PROJBLUENOISE_PARTITIONS() 10
 
-#define DO_DFT() true
+#define DO_DFT() false
 #define DFT_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
@@ -1103,7 +1103,6 @@ int main(int argc, char **argv)
         printf("%s...\n", pattern.nameHuman);
         DoTest2D(pattern.generatePoints, log, pattern.nameFile, (int)samplingPattern);
 
-        printf("Raytracing...\n");
         DoTestRaytrace(log.points[samplingPattern], pattern.nameFile);
     }
 

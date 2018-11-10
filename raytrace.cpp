@@ -382,30 +382,69 @@ void RaytraceTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCo
     const float c_windowRight = tan(c_cameraHorizFOV / 2.0f) * c_ptNearPlaneDistance;
     const Vec3 c_cameraRight = Cross(c_ptCameraUp, c_ptCameraFwd);
 
-    float* pixel = image.m_pixels.data();
-    const Vec2* rnd = whiteNoise.data();
+    size_t numThreads = std::thread::hardware_concurrency();
+    std::vector<std::thread> threads;
+    threads.resize(numThreads);
 
-    for (size_t y = 0; y < image.m_height; ++y)
+    char prefix[256];
+    sprintf_s(prefix, "Raytracing %zu samples with %zu threads: ", (endSampleCount - startSampleCount), numThreads);
+
+    std::atomic<size_t> nextRow(0);
+    for (std::thread& t : threads)
     {
-        for (size_t x = 0; x < image.m_width; ++x)
-        {
-            float u = float(x) / float(image.m_width - 1);
-            float v = float(y) / float(image.m_height - 1);
+        t = std::thread(
+            [&]()
+            {
+                size_t y = nextRow.fetch_add(1);
+                bool reportProgress = y == 0;
+                int lastPercent = -1;
 
-            // make (u,v) go from [-1,1] instead of [0,1]
-            u = u * 2.0f - 1.0f;
-            v = v * 2.0f - 1.0f;
-            v *= -1.0f;
+                while (y < image.m_height)
+                {
+                    float* pixel = &image.m_pixels[y*image.m_width*4];
+                    const Vec2* rnd = &whiteNoise[y*image.m_width];
 
-            // find where the ray hits the near plane, and normalize that vector to get the ray direction.
-            Vec3 rayPos = c_ptCameraPos + c_ptCameraFwd * c_ptNearPlaneDistance;
-            rayPos += c_cameraRight * c_windowRight * u;
-            rayPos += c_ptCameraUp * c_windowTop * v;
-            Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
+                    // calculate the DFT for every pixel / frequency in this row
+                    for (size_t x = 0; x < image.m_width; ++x)
+                    {
+                        float u = float(x) / float(image.m_width - 1);
+                        float v = float(y) / float(image.m_height - 1);
 
-            SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, *rnd);
-            pixel += 4;
-            ++rnd;
-        }
+                        // make (u,v) go from [-1,1] instead of [0,1]
+                        u = u * 2.0f - 1.0f;
+                        v = v * 2.0f - 1.0f;
+                        v *= -1.0f;
+
+                        // find where the ray hits the near plane, and normalize that vector to get the ray direction.
+                        Vec3 rayPos = c_ptCameraPos + c_ptCameraFwd * c_ptNearPlaneDistance;
+                        rayPos += c_cameraRight * c_windowRight * u;
+                        rayPos += c_ptCameraUp * c_windowTop * v;
+                        Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
+
+                        SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, *rnd);
+                        pixel += 4;
+                        ++rnd;
+                    }
+
+                    // report progress if we should
+                    if (reportProgress)
+                    {
+                        int percent = int(100.0f * float(y) / float(image.m_height));
+                        if (lastPercent != percent)
+                        {
+                            lastPercent = percent;
+                            printf("\r%s %i%%", prefix, lastPercent);
+                        }
+                    }
+
+                    // go to the next row
+                    y = nextRow.fetch_add(1);
+                }
+            }
+        );
     }
+
+    for (std::thread& t : threads)
+        t.join();
+    printf("\r%s 100%%\n", prefix);
 }
