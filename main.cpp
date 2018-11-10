@@ -25,6 +25,8 @@
 #define PROJBLUENOISE_PARTITIONS() 10
 
 #define DO_RAYTRACING() false
+#define DO_GROUND_TRUTH_RAYTRACE() false
+#define GROUND_TRUTH_SAMPLES() 10000
 #define RAYTRACE_IMAGE_SIZE() 512
 
 #define DO_DFT() false
@@ -886,6 +888,43 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
     }
 }
 
+void GroundTruthRaytrace()
+{
+#if DO_GROUND_TRUTH_RAYTRACE() == false
+    return;
+#endif
+
+    std::vector<Vec2> points;
+    points.resize(GROUND_TRUTH_SAMPLES());
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+    for (auto& v : points)
+    {
+        v[0] = dist(RNG());
+        v[1] = dist(RNG());
+    }
+
+    // make a white noise random number per pixel for Cranley Patterson Rotation.
+    static std::vector<Vec2> whiteNoise;
+    if (whiteNoise.size() == 0)
+    {
+        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+        whiteNoise.resize(RAYTRACE_IMAGE_SIZE() * RAYTRACE_IMAGE_SIZE());
+        for (Vec2& v : whiteNoise)
+        {
+            v[0] = dist(RNG());
+            v[1] = dist(RNG());
+        }
+    }
+
+    ImageFloat resultFloat(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
+    Image result;
+
+    RaytraceTest(resultFloat, 0, GROUND_TRUTH_SAMPLES(), points, whiteNoise, false);
+    ImageFloatToImage(resultFloat, result);
+    SaveImage("out/raytrace/__truth.png", result);
+    SaveImage("out/raytrace_correlated/__truth.png", result);
+}
+
 void DoTestRaytrace(const std::vector<Vec2>& points, const char* label)
 {
 #if DO_RAYTRACING() == false
@@ -1107,6 +1146,7 @@ int main(int argc, char **argv)
     MakeSampleImage(SampleImage_Bilinear, "out/int_bilinear.png");
 
     // do the tests for each type of sampling
+    GroundTruthRaytrace();
     for (size_t samplingPattern = 0; samplingPattern < c_numSamplingPatterns; ++samplingPattern)
     {
         const SamplingPattern& pattern = g_samplingPatterns[samplingPattern];
