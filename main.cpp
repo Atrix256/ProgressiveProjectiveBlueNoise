@@ -1129,7 +1129,12 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* it seems like white noise (and GR2) aren't converging?! maybe try more samples to see if that's true or not.
+
+* try without decorrelation to see what it looks like.
+
 * if there are specific locations that show off quality better in your final renders, grab them from the render and blow them up (nearest neighbor) to view them zoomed in more easily.
+ * yes, do this, and show an error metric for that tile, like projective blue noise does.
 
 * need owen scrambled hammersley
 
