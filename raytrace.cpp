@@ -131,18 +131,24 @@ int g_nextId = 0;
 
 static Sphere s_Spheres[] =
 {
-    {++g_nextId, {0.0f, 0.0f, 10.0f}, 1.0f, {0.1f, 1.0f, 0.1f}}
+    {++g_nextId, {-1.0f, 0.0f, 5.0f}, 1.0f, {0.1f, 1.0f, 0.1f}}
 };
 
 static Triangle s_Triangles[] =
 {
     {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {}, {0.5f, 0.5f, 0.5f}},
     {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {-10.0f, -2.0f, 20.0f}, {}, {0.5f, 0.5f, 0.5f}},
+
+    {++g_nextId, {0.0f, -2.0f, 5.5f}, {-0.75f, -1.0f, 5.5f}, {2.0f,-1.0f, 7.0f}, {}, {1.0f, 0.1f, 0.1f}},
+
+    {++g_nextId, {1.0f, -0.5f, 4.0f}, {-1.25f, 1.5f, 4.0f}, {2.0f, 1.5f, 20.0f}, {}, {0.1f, 0.1f, 1.0f}},
 };
 
 static Sphere s_Lights[] =
 {
-    {++g_nextId, {-5.0f, 10.0f, -5.0f}, 1.0f, {10.0f, 10.0f, 10.0f}}
+    {++g_nextId, {-5.0f, 10.0f, -5.0f}, 1.0f, {1.0f, 0.5f, 0.5f}},
+    {++g_nextId, {2.0f, 8.0f, -5.0f}, 1.0f, {0.5f, 1.0f, 0.5f}},
+    {++g_nextId, {-1.0f, 6.0f, -2.0f}, 1.0f, {0.5f, 0.5f, 1.0f}}
 };
 
 struct RayHitInfo
@@ -198,7 +204,7 @@ inline bool RayIntersects(const Vec3& rayPos, const Vec3& rayDir, const Triangle
         return false;
 
     //enforce a max distance if we should
-    if (info.time >= 0.0 && t > info.time)
+    if (t > info.time)
         return false;
 
     // make sure normal is facing opposite of ray direction.
@@ -244,7 +250,7 @@ inline bool RayIntersects(const Vec3& rayPos, const Vec3& rayDir, const Sphere& 
         collisionTime = -b + sqrt(discr);
 
     //enforce a max distance if we should
-    if (info.time >= 0.0 && collisionTime > info.time)
+    if (collisionTime > info.time)
         return false;
 
     Vec3 normal = Normalize((rayPos + rayDir * collisionTime) - sphere.position);
@@ -298,7 +304,7 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
     // TODO: What is shadow casting geo? a couple spheres and a couple triangles?
 
     RayHitInfo initialHitInfo;
-    RayIntersectScene<true>(rayPos, rayDir, initialHitInfo, false);
+    RayIntersectScene<false>(rayPos, rayDir, initialHitInfo, false);
     if (initialHitInfo.time == FLT_MAX)
     {
         // TODO: formalize ambient lighting. maybe make it directional.
@@ -312,6 +318,9 @@ void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t st
 
     for (size_t sampleIndex = startSampleCount; sampleIndex < endSampleCount; ++sampleIndex)
     {
+        if (sampleIndex >= points.size())
+            break;
+
         float lerpAmount = 1.0f / float(sampleIndex + 1);
 
         // use the samples passed to us

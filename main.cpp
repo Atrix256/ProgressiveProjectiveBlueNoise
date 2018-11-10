@@ -17,7 +17,7 @@
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
 #define RAYTRACE_IMAGE_SIZE() 512
-#define NUM_SAMPLES() 1000
+#define NUM_SAMPLES() 1024
 #define DO_SLOW_SAMPLES() true
 
 #define BLUENOISE_CANDIDATE_MULTIPLIER() 5
@@ -25,7 +25,7 @@
 #define PROJBLUENOISE_CANDIDATE_MULTIPLIER() 100
 #define PROJBLUENOISE_PARTITIONS() 10
 
-#define DO_DFT() false
+#define DO_DFT() true
 #define DFT_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
@@ -46,6 +46,8 @@ typedef void(*GeneratePointsFN)(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_WhiteNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_GoldenRatio2(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_Hammersley(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_Sobol(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_BlueNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_ProjectiveBlueNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_ProjectiveBlueNoise2(std::vector<Vec2>& points, size_t numPoints);
@@ -63,6 +65,8 @@ static const SamplingPattern g_samplingPatterns[] =
     {"White Noise", "white", GeneratePoints_WhiteNoise, true},
     {"Golden Ratio", "golden", GeneratePoints_GoldenRatio, true},
     {"Golden Ratio2", "golden2", GeneratePoints_GoldenRatio2, true},
+    {"Hammersley", "hammersley", GeneratePoints_Hammersley, true},
+    {"Sobol", "sobol", GeneratePoints_Sobol, true},
     {"Blue Noise", "blue", GeneratePoints_BlueNoise, DO_SLOW_SAMPLES()},
     {"Projective Blue Noise", "projblue", GeneratePoints_ProjectiveBlueNoise, DO_SLOW_SAMPLES()},
     {"Projective Blue Noise 2", "projblue2", GeneratePoints_ProjectiveBlueNoise2, DO_SLOW_SAMPLES()},
@@ -86,6 +90,17 @@ std::mt19937& RNG()
     static std::random_device rd;
     static std::mt19937 rng(rd());
     return rng;
+}
+
+inline size_t Ruler(size_t n)
+{
+    size_t ret = 0;
+    while (n != 0 && (n & 1) == 0)
+    {
+        n /= 2;
+        ++ret;
+    }
+    return ret;
 }
 
 inline float Lerp(float A, float B, float t)
@@ -630,13 +645,96 @@ void GeneratePoints_GoldenRatio2(std::vector<Vec2>& points, size_t numPoints)
     static const float a1 = 1.0f / c_goldenRatio2;
     static const float a2 = 1.0f / (c_goldenRatio2 * c_goldenRatio2);
 
-    static const float c_magicNumber = 0.732f;// / 8.0f;
+    static const float c_magicNumber = 0.732f;
 
     points.resize(numPoints);
     for (size_t i = 0; i < numPoints; ++i)
     {
         points[i][0] = fmodf(dist(RNG()) * c_magicNumber / sqrtf(float(i + 1)) + a1 * float(i), 1.0f);
         points[i][1] = fmodf(dist(RNG()) * c_magicNumber / sqrtf(float(i + 1)) + a2 * float(i), 1.0f);
+    }
+}
+
+void GeneratePoints_Hammersley(std::vector<Vec2>& points, size_t numPoints)
+{
+    // figure out how many bits we are working in.
+    size_t value = 1;
+    size_t numBits = 0;
+    while (value < numPoints)
+    {
+        value *= 2;
+        ++numBits;
+    }
+
+    size_t truncateBits = 0;
+
+    // calculate the sample points
+    points.resize(numPoints);
+    size_t sampleInt = 0;
+    for (size_t i = 0; i < numPoints; ++i)
+    {
+        // x axis
+        points[i][0] = 0.0f;
+        {
+            size_t n = i >> truncateBits;
+            float base = 1.0f / 2.0f;
+            while (n)
+            {
+                if (n & 1)
+                    points[i][0] += base;
+                n /= 2;
+                base /= 2.0f;
+            }
+        }
+
+        // y axis
+        points[i][1] = 0.0f;
+        {
+            size_t n = i >> truncateBits;
+            size_t mask = size_t(1) << (numBits - 1 - truncateBits);
+
+            float base = 1.0f / 2.0f;
+            while (mask)
+            {
+                if (n & mask)
+                    points[i][1] += base;
+                mask /= 2;
+                base /= 2.0f;
+            }
+        }
+    }
+}
+
+void GeneratePoints_Sobol(std::vector<Vec2>& points, size_t numPoints)
+{
+    // x axis
+    points.resize(numPoints);
+    size_t sampleInt = 0;
+    for (size_t i = 0; i < numPoints; ++i)
+    {
+        size_t ruler = Ruler(i + 1);
+        size_t direction = size_t(size_t(1) << size_t(31 - ruler));
+        sampleInt = sampleInt ^ direction;
+        points[i][0] = float(sampleInt) / std::pow(2.0f, 32.0f);
+    }
+
+    // y axis
+    // Code adapted from http://web.maths.unsw.edu.au/~fkuo/sobol/
+    // uses numbers: new-joe-kuo-6.21201
+
+    // Direction numbers
+    std::vector<size_t> V;
+    V.resize((size_t)ceil(log((double)numPoints+1) / log(2.0)));
+    V[0] = size_t(1) << size_t(31);
+    for (size_t i = 1; i < V.size(); ++i)
+        V[i] = V[i - 1] ^ (V[i - 1] >> 1);
+
+    // Samples
+    sampleInt = 0;
+    for (size_t i = 0; i < numPoints; ++i) {
+        size_t ruler = Ruler(i + 1);
+        sampleInt = sampleInt ^ V[ruler];
+        points[i][1] = float(sampleInt) / std::pow(2.0f, 32.0f);
     }
 }
 
@@ -805,20 +903,18 @@ void DoTestRaytrace(const std::vector<Vec2>& points, const char* label)
     Image result;
     char fileName[256];
 
-    RaytraceTest(resultFloat, 0, 10, points, whiteNoise);
-    ImageFloatToImage(resultFloat, result);
-    sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 10);
-    SaveImage(fileName, result);
+    static const size_t c_sampleCounts[] =
+    {
+        0, 1, 16, 128, 256, 512, 1024
+    };
 
-    RaytraceTest(resultFloat, 10, 100, points, whiteNoise);
-    ImageFloatToImage(resultFloat, result);
-    sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 100);
-    SaveImage(fileName, result);
-
-    RaytraceTest(resultFloat, 100, 1000, points, whiteNoise);
-    ImageFloatToImage(resultFloat, result);
-    sprintf_s(fileName, "out/raytrace_%s_%i.png", label, 1000);
-    SaveImage(fileName, result);
+    for (size_t index = 0; index < sizeof(c_sampleCounts) / sizeof(c_sampleCounts[0]) - 1; ++index)
+    {
+        RaytraceTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise);
+        ImageFloatToImage(resultFloat, result);
+        sprintf_s(fileName, "out/raytrace_%s_%zu.png", label, c_sampleCounts[index+1]);
+        SaveImage(fileName, result);
+    }
 }
 
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
@@ -1034,6 +1130,8 @@ int main(int argc, char **argv)
 TODO:
 
 * if there are specific locations that show off quality better in your final renders, grab them from the render and blow them up (nearest neighbor) to view them zoomed in more easily.
+
+* need owen scrambled hammersley
 
 Note for how the raytracing works:
  * use Cranley-Patterson rotation to decorrelate samples between pixels.
