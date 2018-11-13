@@ -8,6 +8,7 @@
 
 #include "image.h"
 #include "raytrace.h"
+#include "AO.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
@@ -26,6 +27,7 @@
 
 #define DO_RAYTRACING() false
 #define DO_GROUND_TRUTH_RAYTRACE() false
+#define DO_AO_RAYTRACE() false
 #define GROUND_TRUTH_SAMPLES() 10000
 #define RAYTRACE_IMAGE_SIZE() 512
 
@@ -969,6 +971,50 @@ void DoTestRaytrace(const std::vector<Vec2>& points, const char* label)
     }
 }
 
+void DoTestAO(const std::vector<Vec2>& points, const char* label)
+{
+#if DO_AO_RAYTRACE() == false
+    return;
+#endif
+
+    // make a white noise random number per pixel for Cranley Patterson Rotation.
+    static std::vector<Vec2> whiteNoise;
+    if (whiteNoise.size() == 0)
+    {
+        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+        whiteNoise.resize(RAYTRACE_IMAGE_SIZE() * RAYTRACE_IMAGE_SIZE());
+        for (Vec2& v : whiteNoise)
+        {
+            v[0] = dist(RNG());
+            v[1] = dist(RNG());
+        }
+    }
+
+    ImageFloat resultFloat(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
+    Image result;
+    char fileName[256];
+
+    static const size_t c_sampleCounts[] =
+    {
+        0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024
+    };
+
+    for (size_t index = 0; index < sizeof(c_sampleCounts) / sizeof(c_sampleCounts[0]) - 1; ++index)
+    {
+        AOTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, true);
+        ImageFloatToImage(resultFloat, result);
+        sprintf_s(fileName, "out/AO/%s_%zu.png", label, c_sampleCounts[index+1]);
+        SaveImage(fileName, result);
+    }
+    for (size_t index = 0; index < sizeof(c_sampleCounts) / sizeof(c_sampleCounts[0]) - 1; ++index)
+    {
+        AOTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, false);
+        ImageFloatToImage(resultFloat, result);
+        sprintf_s(fileName, "out/AO_correlated/%s_%zu.png", label, c_sampleCounts[index + 1]);
+        SaveImage(fileName, result);
+    }
+}
+
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
 {
     // generate the sample points and save them as an image
@@ -1157,6 +1203,7 @@ int main(int argc, char **argv)
         DoTest2D(pattern.generatePoints, log, pattern.nameFile, (int)samplingPattern);
 
         DoTestRaytrace(log.points[samplingPattern], pattern.nameFile);
+        DoTestAO(log.points[samplingPattern], pattern.nameFile);
     }
 
     // make error graphs

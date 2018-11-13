@@ -3,9 +3,11 @@
   <ItemGroup>
     <ClCompile Include="main.cpp" />
     <ClCompile Include="raytrace.cpp" />
+    <ClCompile Include="AO.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="image.h" />
     <ClInclude Include="raytrace.h" />
+    <ClInclude Include="AO.h" />
   </ItemGroup>
 </Project>

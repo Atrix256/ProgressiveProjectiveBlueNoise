@@ -127,7 +127,7 @@ struct Triangle
     Vec3 color;
 };
 
-int g_nextId = 0;
+static int g_nextId = 0;
 
 static Sphere s_Spheres[] =
 {
@@ -162,7 +162,7 @@ struct RayHitInfo
 
 static bool g_initialized = false;
 
-void Initialize()
+static void Initialize()
 {
     g_initialized = true;
     for (size_t i = 0; i < sizeof(s_Triangles) / sizeof(s_Triangles[0]); ++i)
@@ -298,7 +298,7 @@ void RayIntersectScene(const Vec3& rayPos, const Vec3& rayDir, RayHitInfo& info,
     }
 }
 
-void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, const Vec2& rnd)
+static void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, const Vec2& rnd)
 {
     // TODO: set up a good scene
     // TODO: What is shadow casting geo? a couple spheres and a couple triangles?

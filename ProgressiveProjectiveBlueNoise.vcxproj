@@ -115,10 +115,12 @@
     </Link>
   </ItemDefinitionGroup>
   <ItemGroup>
+    <ClCompile Include="AO.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="raytrace.cpp" />
   </ItemGroup>
   <ItemGroup>
+    <ClInclude Include="AO.h" />
     <ClInclude Include="image.h" />
     <ClInclude Include="raytrace.h" />
   </ItemGroup>
