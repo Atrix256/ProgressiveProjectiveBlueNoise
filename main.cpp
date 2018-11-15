@@ -1273,6 +1273,10 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* the raytracing looks b0rked for some sample types, whats up with that?
+
+* need to fetch before you can push, hrm.
+
 * make dft of small sample counts!
 
 * maybe should do 2d and 1d zone plate tests too.
