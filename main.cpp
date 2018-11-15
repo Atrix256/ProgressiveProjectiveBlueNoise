@@ -1441,6 +1441,8 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* sample nathan reed's function as a good 2d test
+
 * double check that the integral result values you have hard coded are correct.
  * could just calculate them yourself via a whole bunch of white noise samples, then use that value for the rest of the tests.
 
