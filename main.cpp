@@ -14,6 +14,9 @@
 #define STBI_MSC_SECURE_CRT
 #include "stb_image_write.h"
 
+#define STB_IMAGE_IMPLEMENTATION
+#include "stb_image.h"
+
 #define TEST_IMAGE_SIZE() 128 // in pixels, on each axis
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
@@ -33,6 +36,8 @@
 #define RAYTRACE_IMAGE_SIZE() 512
 
 #define DO_DFT() true
+#define DO_BLUR_TEST() true
+
 #define DFT_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
@@ -1058,6 +1063,97 @@ void DoTestAO(const std::vector<Vec2>& points, const char* label)
     }
 }
 
+void DoTestBlur(const std::vector<Vec2>& points, const char* label)
+{
+#if DO_BLUR_TEST() == false
+    return;
+#endif
+
+    static bool imageLoaded = false;
+    static ImageFloat srcImage;
+    if (!imageLoaded)
+    {
+        imageLoaded = true;
+        int width, height, components;
+        float* pixels = stbi_loadf("scenery.png", &width, &height, &components, 4);
+
+        srcImage = ImageFloat(width, height);
+
+        memcpy(srcImage.m_pixels.data(), pixels, width*height * 4 * sizeof(float));
+
+        stbi_image_free(pixels);        
+    }
+
+    ImageFloat resultFloat(srcImage.m_width, srcImage.m_height);
+    Image result;
+    char fileName[256];
+
+    // diameter = c_kernelRadius * 2 + 1
+    static const size_t c_kernelRadius = 7; // 15x15 = 225 samples
+    static const size_t c_sampleSteps = 10; // this many steps from 0 to 100%
+
+    static const size_t c_sampleDiameter = (c_kernelRadius * 2 + 1);
+    static const size_t c_totalSampleCount = c_sampleDiameter * c_sampleDiameter;
+
+    size_t samplesTaken = 0;
+
+    // TODO: try to get samplecount in the inner loop so it's better for the cache
+
+    for (size_t index = 0; index < c_sampleSteps + 1; ++index)
+    {
+        size_t sampleCount;
+        if (index == 0)
+            sampleCount = 1;
+        else
+            sampleCount = size_t(float(c_totalSampleCount) * float((index - 1) + 1) / float(c_sampleSteps));
+
+        for (; samplesTaken < sampleCount; ++samplesTaken)
+        {
+            float lerpAmount = 1.0f / float(samplesTaken + 1);
+
+            for (int y = 0; y < srcImage.m_height; ++y)
+            {
+                for (int x = 0; x < srcImage.m_width; ++x)
+                {
+                    const Vec2& sampleFloat = points[samplesTaken];
+
+                    int sampleOffsetX = int(Clamp((sampleFloat[0] * float(c_sampleDiameter)), 0.0f, c_sampleDiameter - 1)) - c_kernelRadius;
+                    int sampleOffsetY = int(Clamp((sampleFloat[1] * float(c_sampleDiameter)), 0.0f, c_sampleDiameter - 1)) - c_kernelRadius;
+
+                    int sampleX = x + sampleOffsetX;
+                    int sampleY = y + sampleOffsetY;
+
+                    if (sampleX < 0)
+                        sampleX = 0;
+                    if (sampleX > srcImage.m_width - 1)
+                        sampleX = srcImage.m_width - 1;
+
+                    if (sampleY < 0)
+                        sampleY = 0;
+                    if (sampleY > srcImage.m_height - 1)
+                        sampleY = srcImage.m_height - 1;
+
+                    // TODO: set this to start of image and increment each loop?
+                    float* destPixel = &resultFloat.m_pixels[(y*srcImage.m_width + x) * 4];
+                    
+                    const float* srcPixel = &srcImage.m_pixels[(sampleY*srcImage.m_width + sampleX) * 4];
+
+                    for (int i = 0; i < 3; ++i)
+                        destPixel[i] = Lerp(destPixel[i], srcPixel[i], lerpAmount);
+
+                    destPixel[3] = 1.0f;
+                }
+            }
+        }
+
+        ImageFloatToImage(resultFloat, result);
+        sprintf_s(fileName, "out/Blur/%s_%zu.png", label, sampleCount);
+        SaveImage(fileName, result);
+    }
+
+    // TODO: make a ground truth version that is exhaustive! nmaybe do that in the !imageLoaded block.
+}
+
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
 {
     // generate the sample points and save them as an image
@@ -1249,6 +1345,7 @@ int main(int argc, char **argv)
 
         DoTestRaytrace(log.points[samplingPattern], pattern.nameFile);
         DoTestAO(log.points[samplingPattern], pattern.nameFile);
+        DoTestBlur(log.points[samplingPattern], pattern.nameFile);
     }
 
     // make error graphs
@@ -1278,6 +1375,13 @@ TODO:
 * need to fetch before you can push, hrm.
 
 * make dft of small sample counts!
+
+* blur: Nah! decorrelation still needed (I think?)
+* blur: hammersley doesn't look good because it isn't progressive, and the blur sample points isn't a power of 2!
+* blur: make a ground truth
+* blur: maybe 4/8/16 sample count would be more telling? showing the full range of all possible sample counts up to the non stochastic amount doesn't seem useful.
+
+* another good usage case could be image resizing (and reconstruction filtering?)
 
 * maybe should do 2d and 1d zone plate tests too.
 
