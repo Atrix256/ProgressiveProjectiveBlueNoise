@@ -18,6 +18,7 @@
 #define SAMPLE_IMAGE_SIZE() 1024
 #define GRAPH_IMAGE_SIZE() 1024
 #define NUM_SAMPLES() 1024
+#define NUM_SAMPLES_SMALL() 32
 #define DO_SLOW_SAMPLES() true
 
 #define BLUENOISE_CANDIDATE_MULTIPLIER() 5
@@ -25,13 +26,13 @@
 #define PROJBLUENOISE_CANDIDATE_MULTIPLIER() 100
 #define PROJBLUENOISE_PARTITIONS() 10
 
-#define DO_RAYTRACING() false
-#define DO_GROUND_TRUTH_RAYTRACE() false
-#define DO_AO_RAYTRACE() false
+#define DO_RAYTRACING() true
+#define DO_GROUND_TRUTH_RAYTRACE() true
+#define DO_AO_RAYTRACE() true
 #define GROUND_TRUTH_SAMPLES() 10000
 #define RAYTRACE_IMAGE_SIZE() 512
 
-#define DO_DFT() false
+#define DO_DFT() true
 #define DFT_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
@@ -51,7 +52,8 @@ typedef void(*GeneratePointsFN)(std::vector<Vec2>& points, size_t numPoints);
 
 void GeneratePoints_WhiteNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints);
-void GeneratePoints_GoldenRatio2(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_GoldenRatio_Jittered(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_GoldenRatio_Radial(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_Hammersley(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_Sobol(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_BlueNoise(std::vector<Vec2>& points, size_t numPoints);
@@ -68,9 +70,10 @@ struct SamplingPattern
 
 static const SamplingPattern g_samplingPatterns[] =
 {
+    {"Golden Ratio Radial", "goldenr", GeneratePoints_GoldenRatio_Radial, true},
     {"White Noise", "white", GeneratePoints_WhiteNoise, true},
     {"Golden Ratio", "golden", GeneratePoints_GoldenRatio, true},
-    {"Golden Ratio2", "golden2", GeneratePoints_GoldenRatio2, true},
+    {"Golden Ratio Jittered", "goldenj", GeneratePoints_GoldenRatio_Jittered, true},
     {"Hammersley", "hammersley", GeneratePoints_Hammersley, true},
     {"Sobol", "sobol", GeneratePoints_Sobol, true},
     {"Blue Noise", "blue", GeneratePoints_BlueNoise, DO_SLOW_SAMPLES()},
@@ -84,6 +87,7 @@ struct Log
     std::array<std::vector<std::string>, 5> logs;
     std::array<std::array<std::vector<float>, 5>, c_numSamplingPatterns+3> errors;  // indexed by: [sampleType][test]
     std::array<std::vector<Vec2>, c_numSamplingPatterns> points;
+    std::array<std::vector<Vec2>, c_numSamplingPatterns> pointsSmall;
 };
 
 typedef uint8_t uint8;
@@ -644,7 +648,7 @@ void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints)
     }
 }
 
-void GeneratePoints_GoldenRatio2(std::vector<Vec2>& points, size_t numPoints)
+void GeneratePoints_GoldenRatio_Jittered(std::vector<Vec2>& points, size_t numPoints)
 {
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
@@ -658,6 +662,45 @@ void GeneratePoints_GoldenRatio2(std::vector<Vec2>& points, size_t numPoints)
     {
         points[i][0] = fmodf(dist(RNG()) * c_magicNumber / sqrtf(float(i + 1)) + a1 * float(i), 1.0f);
         points[i][1] = fmodf(dist(RNG()) * c_magicNumber / sqrtf(float(i + 1)) + a2 * float(i), 1.0f);
+    }
+}
+
+void GeneratePoints_GoldenRatio_Radial(std::vector<Vec2>& points, size_t numPoints)
+{
+    static const float a1 = 1.0f / c_goldenRatio2;
+    static const float a2 = 1.0f / (c_goldenRatio2 * c_goldenRatio2);
+
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    float angleOffset = dist(RNG());
+    float radiusOffset = 0.0f;// dist(RNG());
+
+    static const float c_sqrt2 = sqrtf(2.0f);
+
+    points.resize(numPoints);
+    int candidateIndex = 0;
+    int pointCount = 0;
+    while (pointCount < numPoints)
+    {
+        float r1 = fmodf(0.5f + a1 * float(candidateIndex), 1.0f);
+        float r2 = fmodf(0.5f + a2 * float(candidateIndex), 1.0f);
+        ++candidateIndex;
+
+        float angle = std::fmodf(r1 + angleOffset, 1.0f) * 2.0f * c_pi;
+        float radius = sqrtf(std::fmodf(r2 + radiusOffset, 1.0f)) * c_sqrt2;
+
+        points[pointCount][0] = radius * cosf(angle) * 0.5f + 0.5f;
+        points[pointCount][1] = radius * sinf(angle) * 0.5f + 0.5f;
+
+        if (points[pointCount][0] < 0.0f ||
+            points[pointCount][0] >= 1.0f ||
+            points[pointCount][1] < 0.0f ||
+            points[pointCount][1] >= 1.0f)
+        {
+            continue;
+        }
+
+        ++pointCount;
     }
 }
 
@@ -814,7 +857,7 @@ void Integrate(const T& SampleImage, const std::vector<Vec2>& points, float refe
     }
 }
 
-void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
+void MakeSamplesImage(std::vector<Vec2>& points, const char* label, bool small)
 {
     // draw the footer - show the angle and offset distribution on a number line
     Image image(SAMPLE_IMAGE_SIZE(), SAMPLE_IMAGE_SIZE());
@@ -829,10 +872,10 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
     DrawLine(image, padding, padding, padding, padding + graphSize, 128, 128, 255);
     DrawLine(image, padding + graphSize, padding, padding + graphSize, padding + graphSize, 128, 128, 255);
 
-    for (int sampleIndex = 0; sampleIndex < NUM_SAMPLES(); ++sampleIndex)
+    for (int sampleIndex = 0; sampleIndex < points.size(); ++sampleIndex)
     {
         const Vec2& v = points[sampleIndex];
-        float percent = float(sampleIndex) / float(NUM_SAMPLES() - 1);
+        float percent = float(sampleIndex) / float(points.size() - 1);
         uint8 color = uint8(255.0f * percent);
 
         int dotX = padding + int(v[0] * float(graphSize));
@@ -862,13 +905,13 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
 
     // save the images
     char fileName[256];
-    sprintf_s(fileName, "out/samples_%s.png", label);
+    sprintf_s(fileName, "out/samples_%s%s.png", label, small ? "_sm" : "");
     SaveImage(fileName, image);
 
     // also write the samples out as a csv
     {
         FILE* file = nullptr;
-        sprintf_s(fileName, "out/samplescsv_%s.csv", label);
+        sprintf_s(fileName, "out/samplescsv_%s%s.csv", label, small ? "_sm" : "");
         fopen_s(&file, fileName, "w+t");
         for (const Vec2& v : points)
             fprintf(file, "\"%f\",\"%f\"\n", v[0], v[1]);
@@ -885,7 +928,7 @@ void MakeSamplesImage(std::vector<Vec2>& points, const char* label)
 
         Image dft;
         AppendImageVertical(dft, imageSamples, imageSamplesDFT);
-        sprintf_s(fileName, "out/samplesdft_%s.png", label);
+        sprintf_s(fileName, "out/samplesdft_%s%s.png", label, small ? "_sm" : "");
         SaveImage(fileName, dft);
     }
 }
@@ -1018,8 +1061,10 @@ void DoTestAO(const std::vector<Vec2>& points, const char* label)
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
 {
     // generate the sample points and save them as an image
+    generatePoints(log.pointsSmall[noiseType], NUM_SAMPLES_SMALL());
+    MakeSamplesImage(log.pointsSmall[noiseType], label, true);
     generatePoints(log.points[noiseType], NUM_SAMPLES());
-    MakeSamplesImage(log.points[noiseType], label);
+    MakeSamplesImage(log.points[noiseType], label, false);
 
     // test the sample points for integration
     Integrate(SampleImage_Disk,     log.points[noiseType], c_referenceValue_Disk,     log.logs[0], log.errors[noiseType][0]);
@@ -1227,6 +1272,8 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* make dft of small sample counts!
 
 * maybe should do 2d and 1d zone plate tests too.
 
