@@ -29,14 +29,14 @@
 #define PROJBLUENOISE_CANDIDATE_MULTIPLIER() 100
 #define PROJBLUENOISE_PARTITIONS() 10
 
-#define DO_RAYTRACING() true
-#define DO_GROUND_TRUTH_RAYTRACE() true
-#define DO_AO_RAYTRACE() true
+#define DO_RAYTRACING() false
+#define DO_GROUND_TRUTH_RAYTRACE() false
+#define DO_AO_RAYTRACE() false
 #define GROUND_TRUTH_SAMPLES() 10000
 #define RAYTRACE_IMAGE_SIZE() 512
 
 #define DO_DFT() true
-#define DO_BLUR_TEST() true
+#define DO_BLUR_TEST() false
 
 #define DFT_IMAGE_SIZE() 256
 
@@ -48,6 +48,7 @@ static const float c_referenceValue_Bilinear = 0.25f;
 
 // generalized golden ratio, for making 2d low discrepancy sequences
 // http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
+static const float c_goldenRatio = 1.61803398875f;
 static const float c_goldenRatio2 = 1.32471795724474602596f;
 
 typedef std::array<float, 2> Vec2;
@@ -58,6 +59,7 @@ typedef void(*GeneratePointsFN)(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_WhiteNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_GoldenRatio_Jittered(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_GoldenSpiral(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_GoldenRatio_Radial(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_Hammersley(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_Sobol(std::vector<Vec2>& points, size_t numPoints);
@@ -75,6 +77,7 @@ struct SamplingPattern
 
 static const SamplingPattern g_samplingPatterns[] =
 {
+    {"Golden Spiral", "goldens", GeneratePoints_GoldenSpiral, true},
     {"Golden Ratio Radial", "goldenr", GeneratePoints_GoldenRatio_Radial, true},
     {"White Noise", "white", GeneratePoints_WhiteNoise, true},
     {"Golden Ratio", "golden", GeneratePoints_GoldenRatio, true},
@@ -670,6 +673,60 @@ void GeneratePoints_GoldenRatio_Jittered(std::vector<Vec2>& points, size_t numPo
     }
 }
 
+void GeneratePoints_GoldenSpiral(std::vector<Vec2>& points, size_t numPoints)
+{
+    /*
+    Math Notes:
+        * The golden spiral creates points in a circle.
+        * We only want to keep the points inside of the square in that circle.
+        * That means we reject some number of points.
+        * The percentage of points rejected is (area of circle - area of square) / (area of circle)
+        * with a circle of radius sqrt(2), that circle has area of 2pi
+        * square has side length of 2, so area of 4.
+        * percentage rejected = (2pi - 4) / (2pi) = ~0.363
+        * So, in our r1 value, we want to increase the "numpoints" by that ratio i think...
+
+        ! However: changing the numpoints changes the location of the points, making different points get rejected so this helps the problem but doesn't fix it.
+          I multiplied this by hand tuned numbers til i came up with 1.55.
+    */
+
+    // Note: this "doubles up" on points because it discards some of the points.
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    float angleOffset = dist(RNG());
+    float radiusOffset = 0.0f;// dist(RNG());
+
+    static const float c_sqrt2 = sqrtf(2.0f);
+
+    float numPointsMultiplier = 1.0f + (2.0f * c_pi - 4.0f) / (2.0f * c_pi) * 1.55f;
+
+    points.resize(numPoints);
+    int candidateIndex = 1;
+    int pointCount = 0;
+    while (pointCount < numPoints)
+    {
+        float r1 = fmodf(0.5f + float(candidateIndex) / (float(numPoints)*numPointsMultiplier), 1.0f);
+        float r2 = fmodf(0.5f + float(candidateIndex) / c_goldenRatio, 1.0f);
+        ++candidateIndex;
+
+        float angle = std::fmodf(r1 + angleOffset, 1.0f) * 2.0f * c_pi;
+        float radius = sqrtf(std::fmodf(r2 + radiusOffset, 1.0f)) * c_sqrt2;
+
+        points[pointCount][0] = radius * cosf(angle) * 0.5f + 0.5f;
+        points[pointCount][1] = radius * sinf(angle) * 0.5f + 0.5f;
+
+        if (points[pointCount][0] < 0.0f ||
+            points[pointCount][0] >= 1.0f ||
+            points[pointCount][1] < 0.0f ||
+            points[pointCount][1] >= 1.0f)
+        {
+            continue;
+        }
+
+        ++pointCount;
+    }
+}
+
 void GeneratePoints_GoldenRatio_Radial(std::vector<Vec2>& points, size_t numPoints)
 {
     static const float a1 = 1.0f / c_goldenRatio2;
@@ -683,7 +740,7 @@ void GeneratePoints_GoldenRatio_Radial(std::vector<Vec2>& points, size_t numPoin
     static const float c_sqrt2 = sqrtf(2.0f);
 
     points.resize(numPoints);
-    int candidateIndex = 0;
+    int candidateIndex = 1;
     int pointCount = 0;
     while (pointCount < numPoints)
     {
@@ -1369,6 +1426,8 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* regenerate all the raytracing, etc images w/ new sample types
 
 * the raytracing looks b0rked for some sample types, whats up with that?
 
