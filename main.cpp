@@ -35,7 +35,7 @@
 #define GROUND_TRUTH_SAMPLES() 10000
 #define RAYTRACE_IMAGE_SIZE() 512
 
-#define DO_DFT() true
+#define DO_DFT() false
 #define DO_BLUR_TEST() false
 
 #define DFT_IMAGE_SIZE() 256
