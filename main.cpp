@@ -56,11 +56,12 @@ typedef std::array<float, 3> Vec3;
 
 typedef void(*GeneratePointsFN)(std::vector<Vec2>& points, size_t numPoints);
 
-void GeneratePoints_WhiteNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints);
-void GeneratePoints_GoldenRatio_Jittered(std::vector<Vec2>& points, size_t numPoints);
-void GeneratePoints_GoldenSpiral(std::vector<Vec2>& points, size_t numPoints);
-void GeneratePoints_GoldenRatio_Radial(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_GoldenRatio_Spiral(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_R2(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_R2_Spiral(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_R2_Jittered(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_WhiteNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_Hammersley(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_Sobol(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_BlueNoise(std::vector<Vec2>& points, size_t numPoints);
@@ -77,11 +78,12 @@ struct SamplingPattern
 
 static const SamplingPattern g_samplingPatterns[] =
 {
-    {"Golden Spiral", "goldens", GeneratePoints_GoldenSpiral, true},
-    {"Golden Ratio Radial", "goldenr", GeneratePoints_GoldenRatio_Radial, true},
-    {"White Noise", "white", GeneratePoints_WhiteNoise, true},
     {"Golden Ratio", "golden", GeneratePoints_GoldenRatio, true},
-    {"Golden Ratio Jittered", "goldenj", GeneratePoints_GoldenRatio_Jittered, true},
+    {"Golden Ratio Spiral", "goldens", GeneratePoints_GoldenRatio_Spiral, true},
+    {"R2", "r2", GeneratePoints_R2, true},
+    {"R2 Spiral", "r2s", GeneratePoints_R2_Spiral, true},
+    {"R2 Jittered", "r2j", GeneratePoints_R2_Jittered, true},
+    {"White Noise", "white", GeneratePoints_WhiteNoise, true},
     {"Hammersley", "hammersley", GeneratePoints_Hammersley, true},
     {"Sobol", "sobol", GeneratePoints_Sobol, true},
     {"Blue Noise", "blue", GeneratePoints_BlueNoise, DO_SLOW_SAMPLES()},
@@ -643,7 +645,7 @@ void GeneratePoints_WhiteNoise(std::vector<Vec2>& points, size_t numPoints)
     }
 }
 
-void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints)
+void GeneratePoints_R2(std::vector<Vec2>& points, size_t numPoints)
 {
     static const float a1 = 1.0f / c_goldenRatio2;
     static const float a2 = 1.0f / (c_goldenRatio2 * c_goldenRatio2);
@@ -656,7 +658,7 @@ void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints)
     }
 }
 
-void GeneratePoints_GoldenRatio_Jittered(std::vector<Vec2>& points, size_t numPoints)
+void GeneratePoints_R2_Jittered(std::vector<Vec2>& points, size_t numPoints)
 {
     std::uniform_real_distribution<float> dist(0.0f, 1.0f);
 
@@ -673,7 +675,19 @@ void GeneratePoints_GoldenRatio_Jittered(std::vector<Vec2>& points, size_t numPo
     }
 }
 
-void GeneratePoints_GoldenSpiral(std::vector<Vec2>& points, size_t numPoints)
+void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints)
+{
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    points.resize(numPoints);
+    for (size_t i = 0; i < numPoints; ++i)
+    {
+        points[i][0] = fmodf(0.5f + float(i) / float(numPoints), 1.0f);
+        points[i][1] = fmodf(0.5f + float(i) / c_goldenRatio, 1.0f);
+    }
+}
+
+void GeneratePoints_GoldenRatio_Spiral(std::vector<Vec2>& points, size_t numPoints)
 {
     /*
     Math Notes:
@@ -727,7 +741,7 @@ void GeneratePoints_GoldenSpiral(std::vector<Vec2>& points, size_t numPoints)
     }
 }
 
-void GeneratePoints_GoldenRatio_Radial(std::vector<Vec2>& points, size_t numPoints)
+void GeneratePoints_R2_Spiral(std::vector<Vec2>& points, size_t numPoints)
 {
     static const float a1 = 1.0f / c_goldenRatio2;
     static const float a2 = 1.0f / (c_goldenRatio2 * c_goldenRatio2);
@@ -1426,6 +1440,9 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* double check that the integral result values you have hard coded are correct.
+ * could just calculate them yourself via a whole bunch of white noise samples, then use that value for the rest of the tests.
 
 * regenerate all the raytracing, etc images w/ new sample types
 
