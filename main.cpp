@@ -60,6 +60,8 @@ void GeneratePoints_GoldenRatio(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_GoldenRatio_Spiral(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_R2(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_R2_Spiral(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_R2_Spiral2(std::vector<Vec2>& points, size_t numPoints);
+void GeneratePoints_R2_Spiral3(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_R2_Jittered(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_WhiteNoise(std::vector<Vec2>& points, size_t numPoints);
 void GeneratePoints_Hammersley(std::vector<Vec2>& points, size_t numPoints);
@@ -81,6 +83,8 @@ static const SamplingPattern g_samplingPatterns[] =
     {"Golden Ratio", "golden", GeneratePoints_GoldenRatio, true},
     {"Golden Ratio Spiral", "goldens", GeneratePoints_GoldenRatio_Spiral, true},
     {"R2", "r2", GeneratePoints_R2, true},
+    {"R2 Spiral2", "r2s2", GeneratePoints_R2_Spiral2, true},
+    {"R2 Spiral3", "r2s3", GeneratePoints_R2_Spiral3, true},
     {"R2 Spiral", "r2s", GeneratePoints_R2_Spiral, true},
     {"R2 Jittered", "r2j", GeneratePoints_R2_Jittered, true},
     {"White Noise", "white", GeneratePoints_WhiteNoise, true},
@@ -767,6 +771,121 @@ void GeneratePoints_R2_Spiral(std::vector<Vec2>& points, size_t numPoints)
 
         points[pointCount][0] = radius * cosf(angle) * 0.5f + 0.5f;
         points[pointCount][1] = radius * sinf(angle) * 0.5f + 0.5f;
+
+        if (points[pointCount][0] < 0.0f ||
+            points[pointCount][0] >= 1.0f ||
+            points[pointCount][1] < 0.0f ||
+            points[pointCount][1] >= 1.0f)
+        {
+            continue;
+        }
+
+        ++pointCount;
+    }
+}
+
+// "A Low Distortion Map Between Disk and Square"
+// https://pdfs.semanticscholar.org/4322/6a3916a85025acbb3a58c17f6dc0756b35ac.pdf
+Vec2 ToUnitDisk(const Vec2& onSquare)
+{
+    float phi, r, u, v;
+    float a = 2.0f * onSquare[0] - 1.0f; // (a,b) is now on [-1,1]ˆ2
+    float b = 2.0f * onSquare[1] - 1.0f;
+    if (a > -b) // region 1 or 2
+    {
+        if (a > b) // region 1, also |a| > |b|
+        {
+            r = a;
+            phi = (c_pi / 4.0f) * (b / a);
+        }
+        else // region 2, also |b| > |a|
+        {
+            r = b;
+            phi = (c_pi / 4.0f) * (2.0f - (a / b));
+        }
+    }
+    else // region 3 or 4
+    {
+        if (a < b) // region 3, also |a| >= |b|, a != 0
+        {
+            r = -a;
+            phi = (c_pi / 4.0f) * (4.0f + (b / a));
+        }
+        else // region 4, |b| >= |a|, but a==0 and b==0 could occur.
+        {
+            r = -b;
+            if (b != 0.0f)
+                phi = (c_pi / 4.0f) * (6.0f - (a / b));
+            else
+                phi = 0.0f;
+        }
+    }
+
+    u = r * cos(phi);
+    v = r * sin(phi);
+    return { u, v };
+}
+
+void GeneratePoints_R2_Spiral2(std::vector<Vec2>& points, size_t numPoints)
+{
+    // Got this from Martin https://twitter.com/TechSparx
+    //(x,y) = (x * sqrt(1-y*y/2), y * sqrt(1-x*x/2)
+
+    static const float a1 = 1.0f / c_goldenRatio2;
+    static const float a2 = 1.0f / (c_goldenRatio2 * c_goldenRatio2);
+
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    static const float c_sqrt2 = sqrtf(2.0f);
+
+    points.resize(numPoints);
+    int candidateIndex = 1;
+    int pointCount = 0;
+    while (pointCount < numPoints)
+    {
+        float r1 = fmodf(0.5f + a1 * float(candidateIndex), 1.0f) * 2.0f - 1.0f;
+        float r2 = fmodf(0.5f + a2 * float(candidateIndex), 1.0f) * 2.0f - 1.0f;
+        ++candidateIndex;
+
+        points[pointCount][0] = r1 * sqrtf(1.0f - r2 * r2 / 2.0f) * c_sqrt2 * 0.5f + 0.5f;
+        points[pointCount][1] = r2 * sqrtf(1.0f - r1 * r1 / 2.0f) * c_sqrt2 * 0.5f + 0.5f;
+
+        if (points[pointCount][0] < 0.0f ||
+            points[pointCount][0] >= 1.0f ||
+            points[pointCount][1] < 0.0f ||
+            points[pointCount][1] >= 1.0f)
+        {
+            continue;
+        }
+
+        ++pointCount;
+    }
+}
+
+void GeneratePoints_R2_Spiral3(std::vector<Vec2>& points, size_t numPoints)
+{
+    // Got this from "A Low Distortion Map Between Disk and Square"
+    //https://pdfs.semanticscholar.org/4322/6a3916a85025acbb3a58c17f6dc0756b35ac.pdf
+
+    static const float a1 = 1.0f / c_goldenRatio2;
+    static const float a2 = 1.0f / (c_goldenRatio2 * c_goldenRatio2);
+
+    std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+
+    static const float c_sqrt2 = sqrtf(2.0f);
+
+    points.resize(numPoints);
+    int candidateIndex = 1;
+    int pointCount = 0;
+    while (pointCount < numPoints)
+    {
+        float r1 = fmodf(0.5f + a1 * float(candidateIndex), 1.0f);// *2.0f - 1.0f;
+        float r2 = fmodf(0.5f + a2 * float(candidateIndex), 1.0f);// *2.0f - 1.0f;
+        ++candidateIndex;
+
+        points[pointCount] = ToUnitDisk({ r1, r2 });
+        points[pointCount][0] = points[pointCount][0] * c_sqrt2 * 0.5f + 0.5f;
+        points[pointCount][1] = points[pointCount][1] * c_sqrt2 * 0.5f + 0.5f;
 
         if (points[pointCount][0] < 0.0f ||
             points[pointCount][0] >= 1.0f ||
@@ -1554,5 +1673,9 @@ projective blue noise article: http://resources.mpi-inf.mpg.de/ProjectiveBlueNoi
 multijittered sampling: https://graphics.pixar.com/library/ProgressiveMultiJitteredSampling/
 generalized golden ratio: http://extremelearning.com.au/unreasonable-effectiveness-of-quasirandom-sequences/
 
+
+* maybe some useful test metrics from this paper:
+"Discrepancy as a Quality Measure for Sample Distributions"
+https://www.cs.utah.edu/~shirley/papers/euro91.pdf
 
 */
