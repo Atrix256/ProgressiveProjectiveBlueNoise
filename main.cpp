@@ -36,9 +36,12 @@
 #define RAYTRACE_IMAGE_SIZE() 512
 
 #define DO_DFT() false
+#define DFT_IMAGE_SIZE() 256
+
 #define DO_BLUR_TEST() false
 
-#define DFT_IMAGE_SIZE() 256
+#define DO_SAMPLING_TEST() true
+#define SAMPLING_IMAGE_SIZE() 256
 
 static const float c_referenceValue_Disk = 0.5f;
 static const float c_referenceValue_Triangle = 0.5f;
@@ -1344,6 +1347,83 @@ void DoTestBlur(const std::vector<Vec2>& points, const char* label)
     // TODO: make a ground truth version that is exhaustive! nmaybe do that in the !imageLoaded block.
 }
 
+// This function is from Nathan Reed
+// Python Code: https://gist.github.com/Reedbeta/893b63390160e33ddb3c#file-antialias-test-py-L36-L44
+// Blog Post: http://reedbeta.com/blog/antialiasing-to-splat-or-not/
+float SampleFreqFunc(float x, float y)
+{
+    float minPeriod = 2e-5f;
+    float maxPeriod = 0.2f;
+    float period = minPeriod + (maxPeriod - minPeriod) * y*y;
+    float phase = x / period;
+    phase -= floorf(phase);
+    return roundf(phase);
+}
+
+void DoTestSampling(const std::vector<Vec2>& points, const char* label)
+{
+    #if DO_SAMPLING_TEST() == false
+    return;
+    #endif
+
+    size_t sampleCounts[] =
+    {
+        0,
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024
+    };
+
+    ImageFloat resultFloat(SAMPLING_IMAGE_SIZE(), SAMPLING_IMAGE_SIZE());
+
+    float pixelSizeUV = 1.0f / float(SAMPLING_IMAGE_SIZE());
+
+    for (size_t sampleCountIndex = 1; sampleCountIndex < sizeof(sampleCounts) / sizeof(sampleCounts[0]); ++sampleCountIndex)
+    {
+        float* pixel = resultFloat.m_pixels.data();
+        for (size_t y = 0; y < SAMPLING_IMAGE_SIZE(); ++y)
+        {
+            for (size_t x = 0; x < SAMPLING_IMAGE_SIZE(); ++x)
+            {
+                for (size_t sampleIndex = sampleCounts[sampleCountIndex-1]; sampleIndex < sampleCounts[sampleCountIndex]; ++sampleIndex)
+                {
+                    Vec2 jitteredUV;
+                    jitteredUV[0] = (float(x) + points[sampleIndex][0]) * pixelSizeUV;
+                    jitteredUV[1] = (float(y) + points[sampleIndex][1]) * pixelSizeUV;
+
+                    float value = SampleFreqFunc(jitteredUV[0], jitteredUV[1]);
+                    pixel[0] = Lerp(pixel[0], value, 1.0f / float(sampleIndex + 1));
+                }
+
+                pixel[1] = pixel[2] = pixel[0];
+                pixel[3] = 1.0f;
+                pixel += 4;
+            }
+        }
+
+        Image result;
+        char fileName[256];
+        ImageFloatToImage(resultFloat, result);
+        sprintf_s(fileName, "out/Sampling/%s_%zu.png", label, sampleCounts[sampleCountIndex]);
+        SaveImage(fileName, result);
+    }
+
+    static bool firstCall = true;
+    if (firstCall)
+    {
+        firstCall = false;
+        // TODO: a ground truth, using lots and lots of white noise samples. 100k?
+    }
+}
+
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
 {
     // generate the sample points and save them as an image
@@ -1536,6 +1616,7 @@ int main(int argc, char **argv)
         DoTestRaytrace(log.points[samplingPattern], pattern.nameFile);
         DoTestAO(log.points[samplingPattern], pattern.nameFile);
         DoTestBlur(log.points[samplingPattern], pattern.nameFile);
+        DoTestSampling(log.points[samplingPattern], pattern.nameFile);
     }
 
     // make error graphs
@@ -1559,6 +1640,8 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* maybe try the multijittered sequence too?
 
 * sample nathan reed's function as a good 2d test
 
