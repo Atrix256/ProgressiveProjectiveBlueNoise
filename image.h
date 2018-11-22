@@ -375,3 +375,21 @@ inline void ImageFloatToImage(const ImageFloat& imageFloat, Image& image)
         image.m_pixels[pixelIndex * 4 + 3] = uint8(Clamp(imageFloat.m_pixels[pixelIndex * 4 + 3], 0.0f, 1.0f) * 255.0f + 0.5f);
     }
 }
+
+// -------------------------------------------------------------------------------
+
+inline float MeanSquaredError(const ImageFloat& A, const ImageFloat& B)
+{
+    float meanSquaredError = 0.0f;
+    const float* valueA = A.m_pixels.data();
+    const float* valueB = B.m_pixels.data();
+    for (size_t index = 1, count = A.m_width*A.m_height * 4; index <= count; ++index)
+    {
+        float squaredError = (*valueA - *valueB) * (*valueA - *valueB);
+        meanSquaredError = Lerp(meanSquaredError, squaredError, 1.0f / float(index));
+
+        ++valueA;
+        ++valueB;
+    }
+    return meanSquaredError;
+}

@@ -1366,6 +1366,43 @@ void DoTestSampling(const std::vector<Vec2>& points, const char* label)
     return;
     #endif
 
+    static const float pixelSizeUV = 1.0f / float(SAMPLING_IMAGE_SIZE());
+
+    // make a ground truth, the first time we call this function
+    static ImageFloat groundTruth(SAMPLING_IMAGE_SIZE(), SAMPLING_IMAGE_SIZE());
+    static bool firstCall = true;
+    if (firstCall)
+    {
+        firstCall = false;
+        static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+        float* pixel = groundTruth.m_pixels.data();
+        for (size_t y = 0; y < SAMPLING_IMAGE_SIZE(); ++y)
+        {
+            for (size_t x = 0; x < SAMPLING_IMAGE_SIZE(); ++x)
+            {
+                for (size_t sampleIndex = 1; sampleIndex <= GROUND_TRUTH_SAMPLES(); ++sampleIndex)
+                {
+                    Vec2 jitteredUV;
+                    jitteredUV[0] = (float(x) + dist(RNG())) * pixelSizeUV;
+                    jitteredUV[1] = (float(y) + dist(RNG())) * pixelSizeUV;
+
+                    float value = SampleFreqFunc(jitteredUV[0], jitteredUV[1]);
+                    pixel[0] = Lerp(pixel[0], value, 1.0f / float(sampleIndex + 1));
+                }
+
+                pixel[1] = pixel[2] = pixel[0];
+                pixel[3] = 1.0f;
+                pixel += 4;
+            }
+        }
+
+        Image result;
+        char fileName[256];
+        ImageFloatToImage(groundTruth, result);
+        sprintf_s(fileName, "out/Sampling/__truth.png");
+        SaveImage(fileName, result);
+    }
+
     size_t sampleCounts[] =
     {
         0,
@@ -1382,9 +1419,15 @@ void DoTestSampling(const std::vector<Vec2>& points, const char* label)
         1024
     };
 
+    // TODO: combine these into a single csv file, by putting it in the log structure?
+
     ImageFloat resultFloat(SAMPLING_IMAGE_SIZE(), SAMPLING_IMAGE_SIZE());
 
-    float pixelSizeUV = 1.0f / float(SAMPLING_IMAGE_SIZE());
+    FILE* file = nullptr;
+    char fileName[256];
+    sprintf_s(fileName, "out/Sampling/%s.csv", label);
+    fopen_s(&file, fileName, "w+b");
+    fprintf(file, "\"SampleCount\",\"RMSE\"\n");
 
     for (size_t sampleCountIndex = 1; sampleCountIndex < sizeof(sampleCounts) / sizeof(sampleCounts[0]); ++sampleCountIndex)
     {
@@ -1410,18 +1453,15 @@ void DoTestSampling(const std::vector<Vec2>& points, const char* label)
         }
 
         Image result;
-        char fileName[256];
         ImageFloatToImage(resultFloat, result);
         sprintf_s(fileName, "out/Sampling/%s_%zu.png", label, sampleCounts[sampleCountIndex]);
         SaveImage(fileName, result);
+
+        float rootMeanSquaredError = sqrtf(MeanSquaredError(resultFloat, groundTruth));
+        fprintf(file, "\"%zu\",\"%f\"\n", sampleCounts[sampleCountIndex], rootMeanSquaredError);
     }
 
-    static bool firstCall = true;
-    if (firstCall)
-    {
-        firstCall = false;
-        // TODO: a ground truth, using lots and lots of white noise samples. 100k?
-    }
+    fclose(file);
 }
 
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
@@ -1640,6 +1680,14 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* idea for auto-comparing error graphs: integrate! ie get area under curve and use to score.
+ * could also show winner at each sample count, up to the final amount.
+
+* after getting info about your projective blue noise, and the R2 stuff, make MetaSampler - clean this up and make it a clean implementation / testing suite for sampling patterns. catch em all. make open source!
+
+* calculate error of sampling tests vs the ground truth
+ * make the ground truth
 
 * maybe try the multijittered sequence too?
 
