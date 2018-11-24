@@ -105,6 +105,9 @@ struct Log
     std::array<std::array<std::vector<float>, 5>, c_numSamplingPatterns+3> errors;  // indexed by: [sampleType][test]
     std::array<std::vector<Vec2>, c_numSamplingPatterns> points;
     std::array<std::vector<Vec2>, c_numSamplingPatterns> pointsSmall;
+
+    std::array<std::vector<float>, c_numSamplingPatterns> samplingRMSE;
+    std::vector<size_t> samplingRMSE_SampleCounts;
 };
 
 typedef uint8_t uint8;
@@ -1360,7 +1363,7 @@ float SampleFreqFunc(float x, float y)
     return roundf(phase);
 }
 
-void DoTestSampling(const std::vector<Vec2>& points, const char* label)
+void DoTestSampling(const std::vector<Vec2>& points, std::vector<float>& RMSE, std::vector<size_t>& sampleCountArray, const char* label)
 {
     #if DO_SAMPLING_TEST() == false
     return;
@@ -1371,6 +1374,7 @@ void DoTestSampling(const std::vector<Vec2>& points, const char* label)
     // make a ground truth, the first time we call this function
     static ImageFloat groundTruth(SAMPLING_IMAGE_SIZE(), SAMPLING_IMAGE_SIZE());
     static bool firstCall = true;
+    bool thisIsTheFirstCall = firstCall;
     if (firstCall)
     {
         firstCall = false;
@@ -1419,16 +1423,14 @@ void DoTestSampling(const std::vector<Vec2>& points, const char* label)
         1024
     };
 
-    // TODO: combine these into a single csv file, by putting it in the log structure?
+    if (thisIsTheFirstCall)
+    {
+        sampleCountArray.resize(sizeof(sampleCounts) / sizeof(sampleCounts[0]) - 1);
+        for (size_t i = 0; i < sampleCountArray.size(); ++i)
+            sampleCountArray[i] = sampleCounts[i + 1];
+    }
 
     ImageFloat resultFloat(SAMPLING_IMAGE_SIZE(), SAMPLING_IMAGE_SIZE());
-
-    FILE* file = nullptr;
-    char fileName[256];
-    sprintf_s(fileName, "out/Sampling/%s.csv", label);
-    fopen_s(&file, fileName, "w+b");
-    fprintf(file, "\"SampleCount\",\"RMSE\"\n");
-
     for (size_t sampleCountIndex = 1; sampleCountIndex < sizeof(sampleCounts) / sizeof(sampleCounts[0]); ++sampleCountIndex)
     {
         float* pixel = resultFloat.m_pixels.data();
@@ -1452,16 +1454,15 @@ void DoTestSampling(const std::vector<Vec2>& points, const char* label)
             }
         }
 
+        char fileName[1024];
         Image result;
         ImageFloatToImage(resultFloat, result);
         sprintf_s(fileName, "out/Sampling/%s_%zu.png", label, sampleCounts[sampleCountIndex]);
         SaveImage(fileName, result);
 
         float rootMeanSquaredError = sqrtf(MeanSquaredError(resultFloat, groundTruth));
-        fprintf(file, "\"%zu\",\"%f\"\n", sampleCounts[sampleCountIndex], rootMeanSquaredError);
+        RMSE.push_back(rootMeanSquaredError);
     }
-
-    fclose(file);
 }
 
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
@@ -1656,7 +1657,36 @@ int main(int argc, char **argv)
         DoTestRaytrace(log.points[samplingPattern], pattern.nameFile);
         DoTestAO(log.points[samplingPattern], pattern.nameFile);
         DoTestBlur(log.points[samplingPattern], pattern.nameFile);
-        DoTestSampling(log.points[samplingPattern], pattern.nameFile);
+        DoTestSampling(log.points[samplingPattern], log.samplingRMSE[samplingPattern], log.samplingRMSE_SampleCounts, pattern.nameFile);
+    }
+
+    // write out sampling RMSE
+    {
+        FILE* csvFile = nullptr;
+        fopen_s(&csvFile, "out/Sampling/__RMSE.csv", "w+t");
+
+        // labels
+        fprintf(csvFile, "\"Sample Counts\"");
+        for (size_t j = 0; j < c_numSamplingPatterns; ++j)
+        {
+            if (g_samplingPatterns[j].enable)
+                fprintf(csvFile, ",\"%s\"", g_samplingPatterns[j].nameHuman);
+        }
+        fprintf(csvFile, "\n");
+
+        // data
+        for (size_t i = 0; i < log.samplingRMSE_SampleCounts.size(); ++i)
+        {
+            fprintf(csvFile, "\"%zu\"", log.samplingRMSE_SampleCounts[i]);
+            for (size_t j = 0; j < c_numSamplingPatterns; ++j)
+            {
+                if(g_samplingPatterns[j].enable)
+                    fprintf(csvFile, ",\"%f\"", log.samplingRMSE[j][i]);
+            }
+            fprintf(csvFile, "\n");
+        }
+        fprintf(csvFile, "\n");
+        fclose(csvFile);
     }
 
     // make error graphs
@@ -1680,6 +1710,8 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+* make projected points be lines instead of dots.
 
 * idea for auto-comparing error graphs: integrate! ie get area under curve and use to score.
  * could also show winner at each sample count, up to the final amount.
@@ -1779,6 +1811,20 @@ Note for how the raytracing works:
  * could maybe do a grid or go multithreaded or something?
 
 
+----- Sample Fox or whatever -----
+
+* multithreaded work!
+
+* good logging setup
+
+* autogen documentation?
+
+* put stuff into caches when possible - like ground truth results
+ * put that and output into a specific folder. can kill that folder to clear cache etc.
+
+* read this and references and all other papers you can.
+ * This specifically has info about calculating the power spectrum (not fourier magnitude!), normalizing it, radial averaging it, and has c++ source code to do so.
+ * https://cs.dartmouth.edu/wjarosz/publications/subr16fourier.html
 
 ----- Good Candidate algorithm -----
 
