@@ -1880,6 +1880,8 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* screenspace AO is probably the sampling thing you want to try for R2
+
 * may not be doing enough samples for ground truth in zone plate!
 
 * make projected points be lines instead of dots.
@@ -1998,6 +2000,13 @@ Note for how the raytracing works:
 * read this and references and all other papers you can.
  * This specifically has info about calculating the power spectrum (not fourier magnitude!), normalizing it, radial averaging it, and has c++ source code to do so.
  * https://cs.dartmouth.edu/wjarosz/publications/subr16fourier.html
+
+* also this paper "Quasi-Monte Carlo Sampling by Art B. Owen"
+ * talks about lots and lots of stuff. digital nets, lattices, etc. also owen scrambling, for eg owen scrambled sobol.
+
+* low discrepancy blue noise sampling implementation: https://twitter.com/dcoeurjo/status/1066029958676578304
+
+* turning halton (?) into an ordered dithering pattern: https://twitter.com/pixelmager/status/1065717648074448896?s=03
 
 * take the average of multiple sampling runs for the randomized ones to get a real reading
 
