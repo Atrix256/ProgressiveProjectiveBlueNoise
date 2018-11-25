@@ -40,8 +40,10 @@
 
 #define DO_BLUR_TEST() false
 
-#define DO_SAMPLING_TEST() true
+#define DO_SAMPLING_TEST() false
 #define SAMPLING_IMAGE_SIZE() 256
+
+#define DO_SAMPLING_ZONEPLATE_TEST() true
 
 static const float c_referenceValue_Disk = 0.5f;
 static const float c_referenceValue_Triangle = 0.5f;
@@ -108,6 +110,9 @@ struct Log
 
     std::array<std::vector<float>, c_numSamplingPatterns> samplingRMSE;
     std::vector<size_t> samplingRMSE_SampleCounts;
+
+    std::array<std::vector<float>, c_numSamplingPatterns> samplingRMSEZP;
+    std::vector<size_t> samplingRMSEZP_SampleCounts;
 };
 
 typedef uint8_t uint8;
@@ -1465,6 +1470,137 @@ void DoTestSampling(const std::vector<Vec2>& points, std::vector<float>& RMSE, s
     }
 }
 
+// Looking at aliasing vs noise when sampling sine waves of different frequencies using different types of noise
+// Making a zone plane: https://blogs.mathworks.com/steve/2011/07/19/jahne-test-pattern-take-3/ and https://blogs.mathworks.com/steve/2011/07/22/filtering-fun/
+template <bool ANTIALIAS, bool ONEQUADRANT, size_t SIZE>
+float SampleZonePlate(float x, float y, float frequencyMultiplier)
+{
+    double km = 0.8 * c_pi;
+    double rm = (ONEQUADRANT ? double(SIZE) : double(SIZE/2)) / frequencyMultiplier;
+    double w = rm / 10.0;
+
+    double r;
+    if (ONEQUADRANT)
+        r = std::hypot(double(x), double(y));
+    else
+        r = std::hypot(double(x-SIZE/2), double(y-SIZE/2));
+
+    double term1 = sin((km * r * r) / (2.0 * rm));
+    double term2 = 0.5 * tanh((rm - r) / w) + 0.5;
+
+    // with anti aliasing via the tanh function
+    if (ANTIALIAS)
+        return float((term1 * term2 + 1.0) / 2.0);
+    // without anti aliasing
+    else
+        return float((term1 + 1.0) / 2.0);
+}
+
+// TODO: 2d zone plate and 1d next to it!
+// TODO: maybe do higher frequencies so it aliases?
+
+void DoTestSamplingZonePlate(const std::vector<Vec2>& points, std::vector<float>& RMSE, std::vector<size_t>& sampleCountArray, const char* label)
+{
+    #if DO_SAMPLING_ZONEPLATE_TEST() == false
+    return;
+    #endif
+
+    static const float pixelSizeUV = 1.0f / float(SAMPLING_IMAGE_SIZE());
+
+    // make a ground truth, the first time we call this function
+    static ImageFloat groundTruth(SAMPLING_IMAGE_SIZE(), SAMPLING_IMAGE_SIZE());
+    static bool firstCall = true;
+    bool thisIsTheFirstCall = firstCall;
+    if (firstCall)
+    {
+        firstCall = false;
+        static std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+        float* pixel = groundTruth.m_pixels.data();
+        for (size_t y = 0; y < SAMPLING_IMAGE_SIZE(); ++y)
+        {
+            for (size_t x = 0; x < SAMPLING_IMAGE_SIZE(); ++x)
+            {
+                for (size_t sampleIndex = 1; sampleIndex <= GROUND_TRUTH_SAMPLES(); ++sampleIndex)
+                {
+                    Vec2 jitteredUV;
+                    jitteredUV[0] = (float(x) + dist(RNG()));
+                    jitteredUV[1] = (float(y) + dist(RNG()));
+
+                    float value = SampleZonePlate<false, false, SAMPLING_IMAGE_SIZE()>(jitteredUV[0], jitteredUV[1], 4.0f);
+                    pixel[0] = Lerp(pixel[0], value, 1.0f / float(sampleIndex + 1));
+                }
+
+                pixel[1] = pixel[2] = pixel[0];
+                pixel[3] = 1.0f;
+                pixel += 4;
+            }
+        }
+
+        Image result;
+        char fileName[256];
+        ImageFloatToImage(groundTruth, result);
+        sprintf_s(fileName, "out/SamplingZP/__truth.png");
+        SaveImage(fileName, result);
+    }
+
+    size_t sampleCounts[] =
+    {
+        0,
+        1,
+        2,
+        4,
+        8,
+        16,
+        32,
+        64,
+        128,
+        256,
+        512,
+        1024
+    };
+
+    if (thisIsTheFirstCall)
+    {
+        sampleCountArray.resize(sizeof(sampleCounts) / sizeof(sampleCounts[0]) - 1);
+        for (size_t i = 0; i < sampleCountArray.size(); ++i)
+            sampleCountArray[i] = sampleCounts[i + 1];
+    }
+
+    ImageFloat resultFloat(SAMPLING_IMAGE_SIZE(), SAMPLING_IMAGE_SIZE());
+    for (size_t sampleCountIndex = 1; sampleCountIndex < sizeof(sampleCounts) / sizeof(sampleCounts[0]); ++sampleCountIndex)
+    {
+        float* pixel = resultFloat.m_pixels.data();
+        for (size_t y = 0; y < SAMPLING_IMAGE_SIZE(); ++y)
+        {
+            for (size_t x = 0; x < SAMPLING_IMAGE_SIZE(); ++x)
+            {
+                for (size_t sampleIndex = sampleCounts[sampleCountIndex-1]; sampleIndex < sampleCounts[sampleCountIndex]; ++sampleIndex)
+                {
+                    Vec2 jitteredUV;
+                    jitteredUV[0] = (float(x) + points[sampleIndex][0]);
+                    jitteredUV[1] = (float(y) + points[sampleIndex][1]);
+
+                    float value = SampleZonePlate<false, false, SAMPLING_IMAGE_SIZE()>(jitteredUV[0], jitteredUV[1], 4.0f);
+                    pixel[0] = Lerp(pixel[0], value, 1.0f / float(sampleIndex + 1));
+                }
+
+                pixel[1] = pixel[2] = pixel[0];
+                pixel[3] = 1.0f;
+                pixel += 4;
+            }
+        }
+
+        char fileName[1024];
+        Image result;
+        ImageFloatToImage(resultFloat, result);
+        sprintf_s(fileName, "out/SamplingZP/%s_%zu.png", label, sampleCounts[sampleCountIndex]);
+        SaveImage(fileName, result);
+
+        float rootMeanSquaredError = sqrtf(MeanSquaredError(resultFloat, groundTruth));
+        RMSE.push_back(rootMeanSquaredError);
+    }
+}
+
 void DoTest2D (const GeneratePoints& generatePoints, Log& log, const char* label, int noiseType)
 {
     // generate the sample points and save them as an image
@@ -1658,9 +1794,11 @@ int main(int argc, char **argv)
         DoTestAO(log.points[samplingPattern], pattern.nameFile);
         DoTestBlur(log.points[samplingPattern], pattern.nameFile);
         DoTestSampling(log.points[samplingPattern], log.samplingRMSE[samplingPattern], log.samplingRMSE_SampleCounts, pattern.nameFile);
+        DoTestSamplingZonePlate(log.points[samplingPattern], log.samplingRMSEZP[samplingPattern], log.samplingRMSEZP_SampleCounts, pattern.nameFile);
     }
 
     // write out sampling RMSE
+    if(DO_SAMPLING_TEST())
     {
         FILE* csvFile = nullptr;
         fopen_s(&csvFile, "out/Sampling/__RMSE.csv", "w+t");
@@ -1682,6 +1820,37 @@ int main(int argc, char **argv)
             {
                 if(g_samplingPatterns[j].enable)
                     fprintf(csvFile, ",\"%f\"", log.samplingRMSE[j][i]);
+            }
+            fprintf(csvFile, "\n");
+        }
+        fprintf(csvFile, "\n");
+        fclose(csvFile);
+    }
+
+
+    // write out zone plate sampling RMSE
+    if(DO_SAMPLING_ZONEPLATE_TEST())
+    {
+        FILE* csvFile = nullptr;
+        fopen_s(&csvFile, "out/SamplingZP/__RMSE.csv", "w+t");
+
+        // labels
+        fprintf(csvFile, "\"Sample Counts\"");
+        for (size_t j = 0; j < c_numSamplingPatterns; ++j)
+        {
+            if (g_samplingPatterns[j].enable)
+                fprintf(csvFile, ",\"%s\"", g_samplingPatterns[j].nameHuman);
+        }
+        fprintf(csvFile, "\n");
+
+        // data
+        for (size_t i = 0; i < log.samplingRMSEZP_SampleCounts.size(); ++i)
+        {
+            fprintf(csvFile, "\"%zu\"", log.samplingRMSEZP_SampleCounts[i]);
+            for (size_t j = 0; j < c_numSamplingPatterns; ++j)
+            {
+                if (g_samplingPatterns[j].enable)
+                    fprintf(csvFile, ",\"%f\"", log.samplingRMSEZP[j][i]);
             }
             fprintf(csvFile, "\n");
         }
@@ -1711,7 +1880,11 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* may not be doing enough samples for ground truth in zone plate!
+
 * make projected points be lines instead of dots.
+
+* the thing about raytracing images being bad... it looks like it's just the first call? ground truth and golden ratio. check into that. uninitialized value? static variable doing something weird?
 
 * idea for auto-comparing error graphs: integrate! ie get area under curve and use to score.
  * could also show winner at each sample count, up to the final amount.
@@ -1825,6 +1998,8 @@ Note for how the raytracing works:
 * read this and references and all other papers you can.
  * This specifically has info about calculating the power spectrum (not fourier magnitude!), normalizing it, radial averaging it, and has c++ source code to do so.
  * https://cs.dartmouth.edu/wjarosz/publications/subr16fourier.html
+
+* take the average of multiple sampling runs for the randomized ones to get a real reading
 
 ----- Good Candidate algorithm -----
 
