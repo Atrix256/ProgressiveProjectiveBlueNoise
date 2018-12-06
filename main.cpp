@@ -9,6 +9,7 @@
 #include "image.h"
 #include "raytrace.h"
 #include "AO.h"
+#include "SSAO.h"
 
 #define STB_IMAGE_WRITE_IMPLEMENTATION
 #define STBI_MSC_SECURE_CRT
@@ -34,6 +35,8 @@
 #define DO_AO_RAYTRACE() false
 #define GROUND_TRUTH_SAMPLES() 10000
 #define RAYTRACE_IMAGE_SIZE() 512
+
+#define DO_SSAO() true
 
 #define DO_DFT() false
 #define DFT_IMAGE_SIZE() 256
@@ -1220,6 +1223,50 @@ void DoTestRaytrace(const std::vector<Vec2>& points, const char* label)
     }
 }
 
+void DoTestSSAO(const std::vector<Vec2>& points, const char* label)
+{
+#if DO_SSAO() == false
+    return;
+#endif
+
+    // make a white noise random number per pixel for Cranley Patterson Rotation.
+    static std::vector<Vec2> whiteNoise;
+    if (whiteNoise.size() == 0)
+    {
+        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+        whiteNoise.resize(RAYTRACE_IMAGE_SIZE() * RAYTRACE_IMAGE_SIZE());
+        for (Vec2& v : whiteNoise)
+        {
+            v[0] = dist(RNG());
+            v[1] = dist(RNG());
+        }
+    }
+
+    ImageFloat resultFloat(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
+    Image result;
+    char fileName[256];
+
+    static const size_t c_sampleCounts[] =
+    {
+        0, 1, 2, 4, 8, 16, 32, 64, 128, 256, 512, 1024
+    };
+
+    for (size_t index = 0; index < sizeof(c_sampleCounts) / sizeof(c_sampleCounts[0]) - 1; ++index)
+    {
+        AOTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, true);
+        ImageFloatToImage(resultFloat, result);
+        sprintf_s(fileName, "out/SSAO/%s_%zu.png", label, c_sampleCounts[index+1]);
+        SaveImage(fileName, result);
+    }
+    for (size_t index = 0; index < sizeof(c_sampleCounts) / sizeof(c_sampleCounts[0]) - 1; ++index)
+    {
+        AOTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, false);
+        ImageFloatToImage(resultFloat, result);
+        sprintf_s(fileName, "out/SSAO_correlated/%s_%zu.png", label, c_sampleCounts[index + 1]);
+        SaveImage(fileName, result);
+    }
+}
+
 void DoTestAO(const std::vector<Vec2>& points, const char* label)
 {
 #if DO_AO_RAYTRACE() == false
@@ -1879,6 +1926,10 @@ int main(int argc, char **argv)
 
 /*
 TODO:
+
+1) Do SSAO -> see how R2 looks.
+2) see how your projective blue noise looks / works. Compare vs projective blue noise paper
+
 
 * screenspace AO is probably the sampling thing you want to try for R2
 

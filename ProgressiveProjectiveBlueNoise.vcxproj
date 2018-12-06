@@ -118,11 +118,13 @@
     <ClCompile Include="AO.cpp" />
     <ClCompile Include="main.cpp" />
     <ClCompile Include="raytrace.cpp" />
+    <ClCompile Include="SSAO.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AO.h" />
     <ClInclude Include="image.h" />
     <ClInclude Include="raytrace.h" />
+    <ClInclude Include="SSAO.h" />
   </ItemGroup>
   <Import Project="$(VCTargetsPath)\Microsoft.Cpp.targets" />
   <ImportGroup Label="ExtensionTargets">

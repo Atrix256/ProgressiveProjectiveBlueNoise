@@ -1,4 +1,4 @@
-#include "AO.h"
+#include "SSAO.h"
 #include <array>
 
 typedef std::array<float, 3> Vec3;
@@ -356,10 +356,12 @@ static void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, si
     }
 }
 
-void AOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, std::vector<Vec2>& whiteNoise, bool decorrelate)
+void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, std::vector<Vec2>& whiteNoise, bool decorrelate)
 {
     if (!g_initialized)
         Initialize();
+
+    // TODO: shoot one ray per pixel (unjittered) and make a depth and normal gbuffer.  Then do an SSAO algorithm.
 
     const float c_aspectRatio = float(image.m_width) / float(image.m_height);
     const float c_cameraHorizFOV = c_ptCameraVerticalFOV * c_aspectRatio;

@@ -4,10 +4,12 @@
     <ClCompile Include="main.cpp" />
     <ClCompile Include="raytrace.cpp" />
     <ClCompile Include="AO.cpp" />
+    <ClCompile Include="SSAO.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="image.h" />
     <ClInclude Include="raytrace.h" />
     <ClInclude Include="AO.h" />
+    <ClInclude Include="SSAO.h" />
   </ItemGroup>
 </Project>
