@@ -312,6 +312,9 @@ static void SamplePixelGBuffer(float* pixel, const Vec3& rayPos, const Vec3& ray
 {
     // TODO: set up a good scene for AO
     RayHitInfo initialHitInfo;
+    initialHitInfo.normal[0] = 0.0f;
+    initialHitInfo.normal[1] = 0.0f;
+    initialHitInfo.normal[2] = 0.0f;
     RayIntersectScene<false>(rayPos, rayDir, initialHitInfo, false);
     pixel[0] = initialHitInfo.normal[0];
     pixel[1] = initialHitInfo.normal[1];

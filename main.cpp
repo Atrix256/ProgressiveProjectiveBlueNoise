@@ -1250,15 +1250,21 @@ void DoTestSSAO(const std::vector<Vec2>& points, const char* label)
     SSAOTestMakeGBuffer(gbuffer);
 
     ImageFloat gbufferToSave = gbuffer;
-    float depthMin = gbufferToSave.m_pixels[3];
-    float depthMax = gbufferToSave.m_pixels[3];
+    float depthMin = 0.0f;
+    float depthMax = 0.0f;
+    bool hasMinMax = false;
     for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
     {
         float* pixel = &gbufferToSave.m_pixels[i * 4];
-        if (pixel[3] < depthMin)
+        if (pixel[3] == FLT_MAX)
+            continue;
+
+        if (!hasMinMax || pixel[3] < depthMin)
             depthMin = pixel[3];
-        if (pixel[3] > depthMax)
+        if (!hasMinMax || pixel[3] > depthMax)
             depthMax = pixel[3];
+
+        hasMinMax = true;
     }
 
     for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
@@ -1267,7 +1273,7 @@ void DoTestSSAO(const std::vector<Vec2>& points, const char* label)
         pixel[0] = pixel[0] * 0.5f + 0.5f;
         pixel[1] = pixel[1] * 0.5f + 0.5f;
         pixel[2] = pixel[2] * 0.5f + 0.5f;
-        pixel[3] = (pixel[3] - depthMin) / (depthMax - depthMin);
+        pixel[3] = (pixel[3] == FLT_MAX) ? 1.0f : (pixel[3] - depthMin) / (depthMax - depthMin);
     }
 
     // TODO: do this as part of initialize! don't need to do it for every sample type!
