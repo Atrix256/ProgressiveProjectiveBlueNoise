@@ -1229,58 +1229,56 @@ void DoTestSSAO(const std::vector<Vec2>& points, const char* label)
     return;
 #endif
 
-    // make a white noise random number per pixel for Cranley Patterson Rotation.
-    static std::vector<Vec2> whiteNoise;
-    if (whiteNoise.size() == 0)
+    // write the gbuffer if we should
+    static bool firstTime = true;
+    if (firstTime)
     {
-        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
-        whiteNoise.resize(RAYTRACE_IMAGE_SIZE() * RAYTRACE_IMAGE_SIZE());
-        for (Vec2& v : whiteNoise)
+        firstTime = false;
+
+        ImageFloat gbuffer(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
+        Image result;
+
+        SSAOTestGetGBuffer(gbuffer);
+
+        ImageFloat gbufferToSave = gbuffer;
+        float depthMin = 0.0f;
+        float depthMax = 0.0f;
+        bool hasMinMax = false;
+        for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
         {
-            v[0] = dist(RNG());
-            v[1] = dist(RNG());
+            float* pixel = &gbufferToSave.m_pixels[i * 4];
+            if (pixel[3] == FLT_MAX)
+                continue;
+
+            if (!hasMinMax || pixel[3] < depthMin)
+                depthMin = pixel[3];
+            if (!hasMinMax || pixel[3] > depthMax)
+                depthMax = pixel[3];
+
+            hasMinMax = true;
         }
+
+        for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
+        {
+            float* pixel = &gbufferToSave.m_pixels[i * 4];
+            pixel[0] = pixel[0] * 0.5f + 0.5f;
+            pixel[1] = pixel[1] * 0.5f + 0.5f;
+            pixel[2] = pixel[2] * 0.5f + 0.5f;
+            pixel[3] = (pixel[3] == FLT_MAX) ? 1.0f : (pixel[3] - depthMin) / (depthMax - depthMin);
+        }
+
+        ImageFloatToImage(gbufferToSave, result);
+        SaveImage("out/SSAO/__gbuffer.png", result);
+        SaveImage("out/SSAO_correlated/__gbuffer.png", result);
     }
+    
 
-    ImageFloat resultFloat(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
-    ImageFloat gbuffer(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
-    Image result;
-    char fileName[256];
 
-    SSAOTestMakeGBuffer(gbuffer);
+    // TODO: SSAO!
 
-    ImageFloat gbufferToSave = gbuffer;
-    float depthMin = 0.0f;
-    float depthMax = 0.0f;
-    bool hasMinMax = false;
-    for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
-    {
-        float* pixel = &gbufferToSave.m_pixels[i * 4];
-        if (pixel[3] == FLT_MAX)
-            continue;
+    
 
-        if (!hasMinMax || pixel[3] < depthMin)
-            depthMin = pixel[3];
-        if (!hasMinMax || pixel[3] > depthMax)
-            depthMax = pixel[3];
 
-        hasMinMax = true;
-    }
-
-    for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
-    {
-        float* pixel = &gbufferToSave.m_pixels[i * 4];
-        pixel[0] = pixel[0] * 0.5f + 0.5f;
-        pixel[1] = pixel[1] * 0.5f + 0.5f;
-        pixel[2] = pixel[2] * 0.5f + 0.5f;
-        pixel[3] = (pixel[3] == FLT_MAX) ? 1.0f : (pixel[3] - depthMin) / (depthMax - depthMin);
-    }
-
-    // TODO: do this as part of initialize! don't need to do it for every sample type!
-
-    ImageFloatToImage(gbufferToSave, result);
-    SaveImage("out/SSAO/__gbuffer.png", result);
-    SaveImage("out/SSAO_correlated/__gbuffer.png", result);
 
     /*
 
@@ -1971,7 +1969,6 @@ TODO:
 
 1) Do SSAO -> see how R2 looks.
 2) see how your projective blue noise looks / works. Compare vs projective blue noise paper
-3) !! normalizing depth doesn't work when it's FLT_MAX! maybe handle that separately somehow, like make them be hard coded to 255 in the output and ignored when calculating min / max?
 
 
 * screenspace AO is probably the sampling thing you want to try for R2

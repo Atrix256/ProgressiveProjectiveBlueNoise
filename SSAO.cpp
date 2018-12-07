@@ -1,6 +1,8 @@
 #include "SSAO.h"
 #include <array>
 
+static ImageFloat g_gbuffer;
+
 typedef std::array<float, 3> Vec3;
 
 static Vec3 RandomUnitVector(float r1, float r2)
@@ -322,10 +324,17 @@ static void SamplePixelGBuffer(float* pixel, const Vec3& rayPos, const Vec3& ray
     pixel[3] = initialHitInfo.time;
 }
 
-void SSAOTestMakeGBuffer(ImageFloat& gbuffer)
+void SSAOTestGetGBuffer(ImageFloat& gbuffer)
 {
     if (!g_initialized)
         Initialize();
+
+    // if the gbuffer already exists, use it
+    if (g_gbuffer.m_width != 0)
+    {
+        gbuffer = g_gbuffer;
+        return;
+    }
 
     const float c_aspectRatio = float(gbuffer.m_width) / float(gbuffer.m_height);
     const float c_cameraHorizFOV = c_ptCameraVerticalFOV * c_aspectRatio;
@@ -337,9 +346,6 @@ void SSAOTestMakeGBuffer(ImageFloat& gbuffer)
     std::vector<std::thread> threads;
     threads.resize(numThreads);
 
-    char prefix[256];
-    sprintf_s(prefix, "Raytracing a gbuffer with %zu threads: ", numThreads);
-
     std::atomic<size_t> nextRow(0);
     for (std::thread& t : threads)
     {
@@ -347,7 +353,6 @@ void SSAOTestMakeGBuffer(ImageFloat& gbuffer)
             [&]()
         {
             size_t y = nextRow.fetch_add(1);
-            bool reportProgress = y == 0;
             int lastPercent = -1;
 
             while (y < gbuffer.m_height)
@@ -375,17 +380,6 @@ void SSAOTestMakeGBuffer(ImageFloat& gbuffer)
                     pixel += 4;
                 }
 
-                // report progress if we should
-                if (reportProgress)
-                {
-                    int percent = int(100.0f * float(y) / float(gbuffer.m_height));
-                    if (lastPercent != percent)
-                    {
-                        lastPercent = percent;
-                        printf("\r%s %i%%", prefix, lastPercent);
-                    }
-                }
-
                 // go to the next row
                 y = nextRow.fetch_add(1);
             }
@@ -395,15 +389,21 @@ void SSAOTestMakeGBuffer(ImageFloat& gbuffer)
 
     for (std::thread& t : threads)
         t.join();
-    printf("\r%s 100%%\n", prefix);
 
-    // TODO: shoot one ray per pixel (unjittered) and make a depth and normal gbuffer.  Then do an SSAO algorithm.
+    // store this off to use again
+    g_gbuffer = gbuffer;
 }
 
 void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, std::vector<Vec2>& whiteNoise, bool decorrelate)
 {
     if (!g_initialized)
         Initialize();
+
+    // get the gbuffer
+    ImageFloat gbuffer(image.m_width, image.m_height);
+    SSAOTestGetGBuffer(gbuffer);
+
+    // TODO: SSAO
 
     return;
 
