@@ -46,7 +46,7 @@
 #define DO_SAMPLING_TEST() false
 #define SAMPLING_IMAGE_SIZE() 256
 
-#define DO_SAMPLING_ZONEPLATE_TEST() true
+#define DO_SAMPLING_ZONEPLATE_TEST() false
 
 static const float c_referenceValue_Disk = 0.5f;
 static const float c_referenceValue_Triangle = 0.5f;
@@ -1243,8 +1243,42 @@ void DoTestSSAO(const std::vector<Vec2>& points, const char* label)
     }
 
     ImageFloat resultFloat(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
+    ImageFloat gbuffer(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
     Image result;
     char fileName[256];
+
+    SSAOTestMakeGBuffer(gbuffer);
+
+    ImageFloat gbufferToSave = gbuffer;
+    float depthMin = gbufferToSave.m_pixels[3];
+    float depthMax = gbufferToSave.m_pixels[3];
+    for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
+    {
+        float* pixel = &gbufferToSave.m_pixels[i * 4];
+        if (pixel[3] < depthMin)
+            depthMin = pixel[3];
+        if (pixel[3] > depthMax)
+            depthMax = pixel[3];
+    }
+
+    for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
+    {
+        float* pixel = &gbufferToSave.m_pixels[i * 4];
+        pixel[0] = pixel[0] * 0.5f + 0.5f;
+        pixel[1] = pixel[1] * 0.5f + 0.5f;
+        pixel[2] = pixel[2] * 0.5f + 0.5f;
+        pixel[3] = (pixel[3] - depthMin) / (depthMax - depthMin);
+    }
+
+    // TODO: do this as part of initialize! don't need to do it for every sample type!
+
+    ImageFloatToImage(gbufferToSave, result);
+    SaveImage("out/SSAO/__gbuffer.png", result);
+    SaveImage("out/SSAO_correlated/__gbuffer.png", result);
+
+    /*
+
+    // TODO: raytrace the image to make a 4 color float "gbuffer" with normal and depth!
 
     static const size_t c_sampleCounts[] =
     {
@@ -1253,18 +1287,19 @@ void DoTestSSAO(const std::vector<Vec2>& points, const char* label)
 
     for (size_t index = 0; index < sizeof(c_sampleCounts) / sizeof(c_sampleCounts[0]) - 1; ++index)
     {
-        AOTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, true);
+        SSAOTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, true);
         ImageFloatToImage(resultFloat, result);
         sprintf_s(fileName, "out/SSAO/%s_%zu.png", label, c_sampleCounts[index+1]);
         SaveImage(fileName, result);
     }
     for (size_t index = 0; index < sizeof(c_sampleCounts) / sizeof(c_sampleCounts[0]) - 1; ++index)
     {
-        AOTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, false);
+        SSAOTest(resultFloat, c_sampleCounts[index], c_sampleCounts[index + 1], points, whiteNoise, false);
         ImageFloatToImage(resultFloat, result);
         sprintf_s(fileName, "out/SSAO_correlated/%s_%zu.png", label, c_sampleCounts[index + 1]);
         SaveImage(fileName, result);
     }
+    */
 }
 
 void DoTestAO(const std::vector<Vec2>& points, const char* label)
@@ -1838,6 +1873,7 @@ int main(int argc, char **argv)
         DoTest2D(pattern.generatePoints, log, pattern.nameFile, (int)samplingPattern);
 
         DoTestRaytrace(log.points[samplingPattern], pattern.nameFile);
+        DoTestSSAO(log.points[samplingPattern], pattern.nameFile);
         DoTestAO(log.points[samplingPattern], pattern.nameFile);
         DoTestBlur(log.points[samplingPattern], pattern.nameFile);
         DoTestSampling(log.points[samplingPattern], log.samplingRMSE[samplingPattern], log.samplingRMSE_SampleCounts, pattern.nameFile);

@@ -308,52 +308,93 @@ static void RayIntersectScene(const Vec3& rayPos, const Vec3& rayDir, RayHitInfo
     }
 }
 
-static void SamplePixel(float* pixel, const Vec3& rayPos, const Vec3& rayDir, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, const Vec2& rnd)
+static void SamplePixelGBuffer(float* pixel, const Vec3& rayPos, const Vec3& rayDir)
 {
     // TODO: set up a good scene for AO
-
     RayHitInfo initialHitInfo;
     RayIntersectScene<false>(rayPos, rayDir, initialHitInfo, false);
-    if (initialHitInfo.time == FLT_MAX)
+    pixel[0] = initialHitInfo.normal[0];
+    pixel[1] = initialHitInfo.normal[1];
+    pixel[2] = initialHitInfo.normal[2];
+    pixel[3] = initialHitInfo.time;
+}
+
+void SSAOTestMakeGBuffer(ImageFloat& gbuffer)
+{
+    if (!g_initialized)
+        Initialize();
+
+    const float c_aspectRatio = float(gbuffer.m_width) / float(gbuffer.m_height);
+    const float c_cameraHorizFOV = c_ptCameraVerticalFOV * c_aspectRatio;
+    const float c_windowTop = tan(c_ptCameraVerticalFOV / 2.0f) * c_ptNearPlaneDistance;
+    const float c_windowRight = tan(c_cameraHorizFOV / 2.0f) * c_ptNearPlaneDistance;
+    const Vec3 c_cameraRight = Cross(c_ptCameraUp, c_ptCameraFwd);
+
+    size_t numThreads = std::thread::hardware_concurrency();
+    std::vector<std::thread> threads;
+    threads.resize(numThreads);
+
+    char prefix[256];
+    sprintf_s(prefix, "Raytracing a gbuffer with %zu threads: ", numThreads);
+
+    std::atomic<size_t> nextRow(0);
+    for (std::thread& t : threads)
     {
-        // TODO: formalize ambient lighting. maybe make it directional.
-        pixel[0] = 0.125f;
-        pixel[1] = 0.125f;
-        pixel[2] = 0.125f;
-        return;
+        t = std::thread(
+            [&]()
+        {
+            size_t y = nextRow.fetch_add(1);
+            bool reportProgress = y == 0;
+            int lastPercent = -1;
+
+            while (y < gbuffer.m_height)
+            {
+                float* pixel = &gbuffer.m_pixels[y*gbuffer.m_width * 4];
+
+                // raytrace every pixel / frequency in this row
+                for (size_t x = 0; x < gbuffer.m_width; ++x)
+                {
+                    float u = float(x) / float(gbuffer.m_width - 1);
+                    float v = float(y) / float(gbuffer.m_height - 1);
+
+                    // make (u,v) go from [-1,1] instead of [0,1]
+                    u = u * 2.0f - 1.0f;
+                    v = v * 2.0f - 1.0f;
+                    v *= -1.0f;
+
+                    // find where the ray hits the near plane, and normalize that vector to get the ray direction.
+                    Vec3 rayPos = c_ptCameraPos + c_ptCameraFwd * c_ptNearPlaneDistance;
+                    rayPos += c_cameraRight * c_windowRight * u;
+                    rayPos += c_ptCameraUp * c_windowTop * v;
+                    Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
+
+                    SamplePixelGBuffer(pixel, rayPos, rayDir);
+                    pixel += 4;
+                }
+
+                // report progress if we should
+                if (reportProgress)
+                {
+                    int percent = int(100.0f * float(y) / float(gbuffer.m_height));
+                    if (lastPercent != percent)
+                    {
+                        lastPercent = percent;
+                        printf("\r%s %i%%", prefix, lastPercent);
+                    }
+                }
+
+                // go to the next row
+                y = nextRow.fetch_add(1);
+            }
+        }
+        );
     }
 
-    Vec3 shadowRayStart = initialHitInfo.position + initialHitInfo.normal * 0.01f;
+    for (std::thread& t : threads)
+        t.join();
+    printf("\r%s 100%%\n", prefix);
 
-    for (size_t sampleIndex = startSampleCount; sampleIndex < endSampleCount; ++sampleIndex)
-    {
-        if (sampleIndex >= points.size())
-            break;
-
-        float lerpAmount = 1.0f / float(sampleIndex + 1);
-
-        // use the samples passed to us
-        // decorrelate with Cranley Patterson Rotation
-        float rand1 = std::fmodf(points[sampleIndex][0] + rnd[0], 1.0f);
-        float rand2 = std::fmodf(points[sampleIndex][1] + rnd[1], 1.0f);
-
-        // sample in a cosine weighted hemisphere
-        Vec3 newRayDir = Normalize(initialHitInfo.normal + RandomUnitVector(rand1, rand2));
-
-        // TODO: update comments etc
-
-        // TODO: tune raylength here
-
-        // raytrace against the scene
-        RayHitInfo shadowHitInfo;
-        shadowHitInfo.time = 1.0f;
-        RayIntersectScene<true>(shadowRayStart, newRayDir, shadowHitInfo, true);
-        float result = shadowHitInfo.id == -1.0f ? 1.0f : 0.0f;
-
-        pixel[0] = Lerp(pixel[0], result, lerpAmount);
-        pixel[1] = Lerp(pixel[1], result, lerpAmount);
-        pixel[2] = Lerp(pixel[2], result, lerpAmount);
-    }
+    // TODO: shoot one ray per pixel (unjittered) and make a depth and normal gbuffer.  Then do an SSAO algorithm.
 }
 
 void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, std::vector<Vec2>& whiteNoise, bool decorrelate)
@@ -361,7 +402,9 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
     if (!g_initialized)
         Initialize();
 
-    // TODO: shoot one ray per pixel (unjittered) and make a depth and normal gbuffer.  Then do an SSAO algorithm.
+    return;
+
+    // TODO: do screen space AO, rasterization style
 
     const float c_aspectRatio = float(image.m_width) / float(image.m_height);
     const float c_cameraHorizFOV = c_ptCameraVerticalFOV * c_aspectRatio;
@@ -408,10 +451,10 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
                         rayPos += c_ptCameraUp * c_windowTop * v;
                         Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
 
-                        if (decorrelate)
-                            SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, *rnd);
-                        else
-                            SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, Vec2{ 0.0f, 0.0f });
+                        //if (decorrelate)
+                          //  SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, *rnd);
+                        //else
+                          //  SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, Vec2{ 0.0f, 0.0f });
                         pixel += 4;
                         ++rnd;
                     }
