@@ -1965,6 +1965,7 @@ TODO:
 
 1) Do SSAO -> see how R2 looks.
 2) see how your projective blue noise looks / works. Compare vs projective blue noise paper
+3) !! normalizing depth doesn't work when it's FLT_MAX! maybe handle that separately somehow, like make them be hard coded to 255 in the output and ignored when calculating min / max?
 
 
 * screenspace AO is probably the sampling thing you want to try for R2

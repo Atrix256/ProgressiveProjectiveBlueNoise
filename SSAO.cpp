@@ -164,9 +164,9 @@ static Sphere s_Lights[] =
 struct RayHitInfo
 {
     float time = FLT_MAX;
-    Vec3 position;
-    Vec3 normal;
-    Vec3 color;
+    Vec3 position = { 0.0f, 0.0f, 0.0f };
+    Vec3 normal = { 0.0f, 0.0f, 0.0f };
+    Vec3 color = { 0.0f, 0.0f, 0.0f };
     int id = -1;
 };
 
