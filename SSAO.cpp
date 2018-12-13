@@ -1,5 +1,6 @@
 #include "SSAO.h"
 #include <array>
+#include "tiny_obj_loader.h"
 
 static ImageFloat g_gbuffer;
 
