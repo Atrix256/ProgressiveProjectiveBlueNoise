@@ -142,27 +142,9 @@ struct Triangle
 
 static int g_nextId = 0;
 
-static Sphere s_Spheres[] =
-{
-    {++g_nextId, {-1.0f, 0.0f, 5.0f}, 1.0f, {0.1f, 1.0f, 0.1f}}
-};
-
-static Triangle s_Triangles[] =
-{
-    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {}, {0.5f, 0.5f, 0.5f}},
-    {++g_nextId, {-10.0f, -2.0f, 0.0f}, {10.0f, -2.0f, 20.0f}, {-10.0f, -2.0f, 20.0f}, {}, {0.5f, 0.5f, 0.5f}},
-
-    {++g_nextId, {0.0f, -2.0f, 5.5f}, {-0.75f, -1.0f, 5.5f}, {2.0f,-1.0f, 7.0f}, {}, {1.0f, 0.1f, 0.1f}},
-
-    {++g_nextId, {1.0f, -0.5f, 4.0f}, {-1.25f, 1.5f, 4.0f}, {2.0f, 1.5f, 20.0f}, {}, {0.1f, 0.1f, 1.0f}},
-};
-
-static Sphere s_Lights[] =
-{
-    {++g_nextId, {-5.0f, 10.0f, -5.0f}, 1.0f, {1.0f, 0.5f, 0.5f}},
-    {++g_nextId, {2.0f, 8.0f, -5.0f}, 1.0f, {0.5f, 1.0f, 0.5f}},
-    {++g_nextId, {-1.0f, 6.0f, -2.0f}, 1.0f, {0.5f, 0.5f, 1.0f}}
-};
+static std::vector<Triangle> s_Triangles;
+static Vec3 s_sceneMin;
+static Vec3 s_sceneMax;
 
 struct RayHitInfo
 {
@@ -178,12 +160,110 @@ static bool g_initialized = false;
 static void Initialize()
 {
     g_initialized = true;
-    for (size_t i = 0; i < sizeof(s_Triangles) / sizeof(s_Triangles[0]); ++i)
+
+    tinyobj::attrib_t attrib;
+    std::vector<tinyobj::shape_t> shapes;
+    std::vector<tinyobj::material_t> materials;
+
+    std::string warn;
+    std::string err;
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "dragon.obj", nullptr, true);
+
+    static const float scale = 0.03f;
+    static const Vec3 offset = {0.0f, -1.0f, 10.0f};
+
+    bool firstVert = true;
+    for (const auto& shape : shapes)
     {
-        Vec3 AB = s_Triangles[i].B - s_Triangles[i].A;
-        Vec3 AC = s_Triangles[i].C - s_Triangles[i].A;
-        s_Triangles[i].Normal = Normalize(Cross(AB, AC));
+        size_t count = shape.mesh.indices.size();
+
+        for (size_t index = 0; index < count; index += 3)
+        {
+            const auto& indexA = shape.mesh.indices[index + 0];
+            const auto& indexB = shape.mesh.indices[index + 1];
+            const auto& indexC = shape.mesh.indices[index + 2];
+
+            Vec3& a = *(Vec3*)&attrib.vertices[indexA.vertex_index * 3];
+            Vec3& b = *(Vec3*)&attrib.vertices[indexB.vertex_index * 3];
+            Vec3& c = *(Vec3*)&attrib.vertices[indexC.vertex_index * 3];
+
+            if (firstVert)
+            {
+                firstVert = false;
+                s_sceneMin = s_sceneMax = a;
+            }
+
+            for (int i = 0; i < 3; ++i)
+            {
+                if (a[i] < s_sceneMin[i])
+                    s_sceneMin[i] = a[i];
+                if (a[i] > s_sceneMax[i])
+                    s_sceneMax[i] = a[i];
+
+                if (b[i] < s_sceneMin[i])
+                    s_sceneMin[i] = b[i];
+                if (b[i] > s_sceneMax[i])
+                    s_sceneMax[i] = b[i];
+
+                if (c[i] < s_sceneMin[i])
+                    s_sceneMin[i] = c[i];
+                if (c[i] > s_sceneMax[i])
+                    s_sceneMax[i] = c[i];
+            }
+
+            Triangle triangle;
+            triangle.A = offset + a * scale;
+            triangle.B = offset + b * scale;
+            triangle.C = offset + c * scale;
+
+            Vec3 AB = triangle.B - triangle.A;
+            Vec3 AC = triangle.C - triangle.A;
+
+            triangle.Normal = Normalize(Cross(AB, AC));
+            triangle.id = ++g_nextId;
+            triangle.color = { 1.0f, 1.0f, 1.0f };
+
+            s_Triangles.push_back(triangle);
+        }
     }
+}
+
+static inline bool RayIntersectsBox(const Vec3& rayPos, const Vec3& rayDir, const Vec3& min, const Vec3& max)
+{
+    float tmin = (min[0] - rayPos[0]) / rayDir[0];
+    float tmax = (max[0] - rayPos[0]) / rayDir[0];
+
+    if (tmin > tmax) std::swap(tmin, tmax);
+
+    float tymin = (min[1] - rayPos[1]) / rayDir[1];
+    float tymax = (max[1] - rayPos[1]) / rayDir[1];
+
+    if (tymin > tymax) std::swap(tymin, tymax);
+
+    if ((tmin > tymax) || (tymin > tmax))
+        return false;
+
+    if (tymin > tmin)
+        tmin = tymin;
+
+    if (tymax < tmax)
+        tmax = tymax;
+
+    float tzmin = (min[1] - rayPos[2]) / rayDir[2];
+    float tzmax = (max[1] - rayPos[2]) / rayDir[2];
+
+    if (tzmin > tzmax) std::swap(tzmin, tzmax);
+
+    if ((tmin > tzmax) || (tzmin > tmax))
+        return false;
+
+    if (tzmin > tmin)
+        tmin = tzmin;
+
+    if (tzmax < tmax)
+        tmax = tzmax;
+
+    return true;
 }
 
 static inline bool RayIntersects(const Vec3& rayPos, const Vec3& rayDir, const Triangle& triangle, RayHitInfo& info)
@@ -282,43 +362,27 @@ static inline bool RayIntersects(const Vec3& rayPos, const Vec3& rayDir, const S
 }
 
 template <bool FIRST_HIT_EXITS>
-static void RayIntersectScene(const Vec3& rayPos, const Vec3& rayDir, RayHitInfo& info, bool testLights)
+static void RayIntersectScene(const Vec3& rayPos, const Vec3& rayDir, RayHitInfo& info)
 {
-    info.time = FLT_MAX;
+    if (!RayIntersectsBox(rayPos, rayDir, s_sceneMin, s_sceneMax))
+        return;
 
-    for (size_t i = 0; i < sizeof(s_Triangles) / sizeof(s_Triangles[0]); ++i)
+    info.time = FLT_MAX;
+    for (size_t i = 0; i < s_Triangles.size(); ++i)
     {
         RayIntersects(rayPos, rayDir, s_Triangles[i], info);
         if (FIRST_HIT_EXITS && info.time != FLT_MAX)
             return;
     }
-
-    for (size_t i = 0; i < sizeof(s_Spheres) / sizeof(s_Spheres[0]); ++i)
-    {
-        RayIntersects(rayPos, rayDir, s_Spheres[i], info);
-        if (FIRST_HIT_EXITS && info.time != FLT_MAX)
-            return;
-    }
-
-    if (testLights)
-    {
-        for (size_t i = 0; i < sizeof(s_Lights) / sizeof(s_Lights[0]); ++i)
-        {
-            RayIntersects(rayPos, rayDir, s_Lights[i], info);
-            if (FIRST_HIT_EXITS && info.time != FLT_MAX)
-                return;
-        }
-    }
 }
 
 static void SamplePixelGBuffer(float* pixel, const Vec3& rayPos, const Vec3& rayDir)
 {
-    // TODO: set up a good scene for AO
     RayHitInfo initialHitInfo;
     initialHitInfo.normal[0] = 0.0f;
     initialHitInfo.normal[1] = 0.0f;
     initialHitInfo.normal[2] = 0.0f;
-    RayIntersectScene<false>(rayPos, rayDir, initialHitInfo, false);
+    RayIntersectScene<false>(rayPos, rayDir, initialHitInfo);
     pixel[0] = initialHitInfo.normal[0];
     pixel[1] = initialHitInfo.normal[1];
     pixel[2] = initialHitInfo.normal[2];
@@ -356,8 +420,13 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer)
             size_t y = nextRow.fetch_add(1);
             int lastPercent = -1;
 
+            bool reportProgress = (y == 0);
+
             while (y < gbuffer.m_height)
             {
+                if (reportProgress)
+                    printf("\rSSAO gbuffer: %i%%", int(100.0f * float(y) / float(gbuffer.m_height)));
+
                 float* pixel = &gbuffer.m_pixels[y*gbuffer.m_width * 4];
 
                 // raytrace every pixel / frequency in this row
@@ -384,6 +453,9 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer)
                 // go to the next row
                 y = nextRow.fetch_add(1);
             }
+
+            if (reportProgress)
+                printf("\rSSAO gbuffer: 100%%\n");
         }
         );
     }

@@ -1970,8 +1970,15 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* put an obj (dragon? teapot?) on a plane for SSAO?
+
 1) Do SSAO -> see how R2 looks.
 2) see how your projective blue noise looks / works. Compare vs projective blue noise paper
+
+
+
+
+
 
 
 * screenspace AO is probably the sampling thing you want to try for R2
