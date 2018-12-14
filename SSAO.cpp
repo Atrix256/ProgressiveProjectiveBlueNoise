@@ -137,7 +137,6 @@ struct Triangle
     Vec3 B;
     Vec3 C;
     Vec3 Normal;
-    Vec3 color;
 };
 
 static int g_nextId = 0;
@@ -151,7 +150,6 @@ struct RayHitInfo
     float time = FLT_MAX;
     Vec3 position = { 0.0f, 0.0f, 0.0f };
     Vec3 normal = { 0.0f, 0.0f, 0.0f };
-    Vec3 color = { 0.0f, 0.0f, 0.0f };
     int id = -1;
 };
 
@@ -167,7 +165,7 @@ static void Initialize()
 
     std::string warn;
     std::string err;
-    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "assets/bunny.obj", nullptr, true);
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "assets/teapot.obj", nullptr, true);
 
     bool firstVert = true;
     for (const auto& shape : shapes)
@@ -218,7 +216,6 @@ static void Initialize()
 
             triangle.Normal = Normalize(Cross(AB, AC));
             triangle.id = ++g_nextId;
-            triangle.color = { 1.0f, 1.0f, 1.0f };
 
             s_Triangles.push_back(triangle);
 
@@ -232,39 +229,106 @@ static void Initialize()
     // center and normalize this so the longest axis is 1.0, and apply an offset for the camera
     Vec3 center = (s_sceneMin + s_sceneMax) / 2.0f;
     float longestRadius = 0.5f * std::max(s_sceneMax[0] - s_sceneMin[0], std::max(s_sceneMax[1] - s_sceneMin[1], s_sceneMax[2] - s_sceneMin[2]));
+    longestRadius *= 1.1f; // give some extra padding at the walls
     Vec3 offset = { 0.0f, 0.0f, 5.0f };
-    firstVert = true;
-
     for (auto& triangle : s_Triangles)
     {
         triangle.A = offset + (triangle.A - center) / longestRadius;
         triangle.B = offset + (triangle.B - center) / longestRadius;
         triangle.C = offset + (triangle.C - center) / longestRadius;
-
-        if (firstVert)
-        {
-            firstVert = false;
-            s_sceneMin = s_sceneMax = triangle.A;
-        }
-
-        for (int i = 0; i < 3; ++i)
-        {
-            if (triangle.A[i] < s_sceneMin[i])
-                s_sceneMin[i] = triangle.A[i];
-            if (triangle.A[i] > s_sceneMax[i])
-                s_sceneMax[i] = triangle.A[i];
-
-            if (triangle.B[i] < s_sceneMin[i])
-                s_sceneMin[i] = triangle.B[i];
-            if (triangle.B[i] > s_sceneMax[i])
-                s_sceneMax[i] = triangle.B[i];
-
-            if (triangle.C[i] < s_sceneMin[i])
-                s_sceneMin[i] = triangle.C[i];
-            if (triangle.C[i] > s_sceneMax[i])
-                s_sceneMax[i] = triangle.C[i];
-        }
     }
+
+    // add a box that is -1 to 1 on each axis, and the offset is added
+    Triangle triangle;
+
+    // left wall
+    {
+        triangle.A = Vec3{ -1.0f, -1.0f, -1.0f } +offset;
+        triangle.B = Vec3{ -1.0f, -1.0f,  1.0f } +offset;
+        triangle.C = Vec3{ -1.0f,  1.0f,  1.0f } +offset;
+        triangle.Normal = Vec3{ 1.0f, 0.0f, 0.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+
+        triangle.A = Vec3{ -1.0f, -1.0f, -1.0f } +offset;
+        triangle.B = Vec3{ -1.0f,  1.0f,  1.0f } +offset;
+        triangle.C = Vec3{ -1.0f,  1.0f, -1.0f } +offset;
+        triangle.Normal = Vec3{ 1.0f, 0.0f, 0.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+    }
+
+    // right wall
+    {
+        triangle.A = Vec3{  1.0f, -1.0f, -1.0f } +offset;
+        triangle.B = Vec3{  1.0f, -1.0f,  1.0f } +offset;
+        triangle.C = Vec3{  1.0f,  1.0f,  1.0f } +offset;
+        triangle.Normal = Vec3{ -1.0f, 0.0f, 0.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+
+        triangle.A = Vec3{ 1.0f, -1.0f, -1.0f } +offset;
+        triangle.B = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
+        triangle.C = Vec3{ 1.0f,  1.0f, -1.0f } +offset;
+        triangle.Normal = Vec3{ -1.0f, 0.0f, 0.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+    }
+
+    // top wall
+    {
+        triangle.A = Vec3{-1.0f,  1.0f, -1.0f } +offset;
+        triangle.B = Vec3{-1.0f,  1.0f,  1.0f } +offset;
+        triangle.C = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
+        triangle.Normal = Vec3{ 0.0f, -1.0f, 0.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+
+        triangle.A = Vec3{-1.0f,  1.0f, -1.0f } +offset;
+        triangle.B = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
+        triangle.C = Vec3{ 1.0f,  1.0f, -1.0f } +offset;
+        triangle.Normal = Vec3{ 0.0f, -1.0f, 0.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+    }
+
+    // bottom wall
+    {
+        triangle.A = Vec3{ -1.0f,  -1.0f, -1.0f } +offset;
+        triangle.B = Vec3{ -1.0f,  -1.0f,  1.0f } +offset;
+        triangle.C = Vec3{ 1.0f,  -1.0f,  1.0f } +offset;
+        triangle.Normal = Vec3{ 0.0f, 1.0f, 0.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+
+        triangle.A = Vec3{ -1.0f,  -1.0f, -1.0f } +offset;
+        triangle.B = Vec3{ 1.0f,  -1.0f,  1.0f } +offset;
+        triangle.C = Vec3{ 1.0f,  -1.0f, -1.0f } +offset;
+        triangle.Normal = Vec3{ 0.0f, 1.0f, 0.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+    }
+
+    // back wall
+    {
+        triangle.A = Vec3{ -1.0f,  -1.0f, 1.0f } +offset;
+        triangle.B = Vec3{ -1.0f,  1.0f,  1.0f } +offset;
+        triangle.C = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
+        triangle.Normal = Vec3{ 0.0f, 0.0f, -1.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+
+        triangle.A = Vec3{ -1.0f, -1.0f, 1.0f } +offset;
+        triangle.B = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
+        triangle.C = Vec3{ 1.0f, -1.0f, 1.0f } +offset;
+        triangle.Normal = Vec3{ 0.0f, 0.0f, -1.0f };
+        triangle.id = ++g_nextId;
+        s_Triangles.push_back(triangle);
+    }
+
+    // set the scene min and max
+    s_sceneMin = Vec3{ -1.0f, -1.0f, -1.0f } + offset;
+    s_sceneMax = Vec3{  1.0f,  1.0f,  1.0f } + offset;
 }
 
 static inline bool RayIntersectsBox(const Vec3& rayPos, const Vec3& rayDir, const Vec3& min, const Vec3& max)
@@ -348,7 +412,6 @@ static inline bool RayIntersects(const Vec3& rayPos, const Vec3& rayDir, const T
     info.time = t;
     info.position = rayPos + rayDir * t;
     info.normal = normal;
-    info.color = triangle.color;
     info.id = triangle.id;
     return true;
 }
@@ -395,7 +458,6 @@ static inline bool RayIntersects(const Vec3& rayPos, const Vec3& rayDir, const S
     info.time = collisionTime;
     info.position = rayPos + rayDir * collisionTime;
     info.normal = normal;
-    info.color = sphere.color;
     info.id = sphere.id;
     return true;
 }
