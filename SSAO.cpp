@@ -227,10 +227,8 @@ static void Initialize()
     // center and normalize this so the longest axis is 1.0, and apply an offset for the camera
     Vec3 center = (s_sceneMin + s_sceneMax) / 2.0f;
     float longestRadius = 0.5f * std::max(s_sceneMax[0] - s_sceneMin[0], std::max(s_sceneMax[1] - s_sceneMin[1], s_sceneMax[2] - s_sceneMin[2]));
-    Vec3 offset = { 0.0f, -1.0f, 100.0f };
+    Vec3 offset = { 0.0f, 0.0f, 5.0f };
     firstVert = true;
-
-    longestRadius *= 0.05f;
 
     for (auto& triangle : s_Triangles)
     {
