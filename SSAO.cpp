@@ -167,10 +167,7 @@ static void Initialize()
 
     std::string warn;
     std::string err;
-    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "dragon.obj", nullptr, true);
-
-    static const float scale = 0.03f;
-    static const Vec3 offset = {0.0f, -1.0f, 10.0f};
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "assets/teapot.obj", nullptr, true);
 
     bool firstVert = true;
     for (const auto& shape : shapes)
@@ -212,9 +209,9 @@ static void Initialize()
             }
 
             Triangle triangle;
-            triangle.A = offset + a * scale;
-            triangle.B = offset + b * scale;
-            triangle.C = offset + c * scale;
+            triangle.A = a;
+            triangle.B = b;
+            triangle.C = c;
 
             Vec3 AB = triangle.B - triangle.A;
             Vec3 AC = triangle.C - triangle.A;
@@ -224,6 +221,45 @@ static void Initialize()
             triangle.color = { 1.0f, 1.0f, 1.0f };
 
             s_Triangles.push_back(triangle);
+        }
+    }
+
+    // center and normalize this so the longest axis is 1.0, and apply an offset for the camera
+    Vec3 center = (s_sceneMin + s_sceneMax) / 2.0f;
+    float longestRadius = 0.5f * std::max(s_sceneMax[0] - s_sceneMin[0], std::max(s_sceneMax[1] - s_sceneMin[1], s_sceneMax[2] - s_sceneMin[2]));
+    Vec3 offset = { 0.0f, -1.0f, 100.0f };
+    firstVert = true;
+
+    longestRadius *= 0.05f;
+
+    for (auto& triangle : s_Triangles)
+    {
+        triangle.A = offset + (triangle.A - center) / longestRadius;
+        triangle.B = offset + (triangle.B - center) / longestRadius;
+        triangle.C = offset + (triangle.C - center) / longestRadius;
+
+        if (firstVert)
+        {
+            firstVert = false;
+            s_sceneMin = s_sceneMax = triangle.A;
+        }
+
+        for (int i = 0; i < 3; ++i)
+        {
+            if (triangle.A[i] < s_sceneMin[i])
+                s_sceneMin[i] = triangle.A[i];
+            if (triangle.A[i] > s_sceneMax[i])
+                s_sceneMax[i] = triangle.A[i];
+
+            if (triangle.B[i] < s_sceneMin[i])
+                s_sceneMin[i] = triangle.B[i];
+            if (triangle.B[i] > s_sceneMax[i])
+                s_sceneMax[i] = triangle.B[i];
+
+            if (triangle.C[i] < s_sceneMin[i])
+                s_sceneMin[i] = triangle.C[i];
+            if (triangle.C[i] > s_sceneMax[i])
+                s_sceneMax[i] = triangle.C[i];
         }
     }
 }

@@ -1970,6 +1970,10 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* we calculate scene bounding box. maybe normalize it so the longest side is 1.0?
+* throw out triangles that are sufficiently pointing away from the camera.
+* have some kind of content addressable storage cache. This could store the gbuffer data for instance and let you iterate on SSAO more quickly. check this in or not?
+
 * put an obj (dragon? teapot?) on a plane for SSAO?
 
 1) Do SSAO -> see how R2 looks.
