@@ -167,7 +167,7 @@ static void Initialize()
 
     std::string warn;
     std::string err;
-    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "assets/teapot.obj", nullptr, true);
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "assets/bunny.obj", nullptr, true);
 
     bool firstVert = true;
     for (const auto& shape : shapes)
@@ -221,6 +221,11 @@ static void Initialize()
             triangle.color = { 1.0f, 1.0f, 1.0f };
 
             s_Triangles.push_back(triangle);
+
+            // Do a sort of back face culling for the raytracing, based on camera look direction
+            // at < 0.0 it was unreliable. at 0.2 it seems ok but i'm not 100% sure.  With a cached gbuffer we shouldn't screw with the possibility of getting bad data i think.
+            //if (Dot(c_ptCameraFwd, triangle.Normal) < 0.2f)
+                //s_Triangles.push_back(triangle);
         }
     }
 

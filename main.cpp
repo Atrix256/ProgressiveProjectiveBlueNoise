@@ -1970,7 +1970,6 @@ int main(int argc, char **argv)
 /*
 TODO:
 
-* throw out triangles that are sufficiently pointing away from the camera.
 * have some kind of content addressable storage cache. This could store the gbuffer data for instance and let you iterate on SSAO more quickly. check this in or not?
 * maybe put a plane around the object, or maybe a 5 sided box? to get AO against the walls
 
