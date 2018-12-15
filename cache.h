@@ -22,6 +22,9 @@ static inline uint32_t fnv1a(const void* data, size_t numBytes, uint32_t hash = 
     return hash;
 }
 
+// params is all of the input information needed to create the data
+// buffer is what will contain the data, whether read from the cache or generated
+// lambda is the function that will generate the data, given the params, if it isn't in the cache
 template <typename LAMDBA, typename T>
 void MakeDataCached(const LAMDBA& lambda, const T& params, std::vector<unsigned char>& buffer)
 {
