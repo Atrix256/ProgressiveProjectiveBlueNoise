@@ -1970,7 +1970,7 @@ int main(int argc, char **argv)
 /*
 TODO:
 
-* put an obj (dragon? teapot?) on a plane for SSAO?
+* i think you need a camera / proj matrix so we can convert screenpos / depth to world space (camera space) units
 
 1) Do SSAO -> see how R2 looks.
 2) see how your projective blue noise looks / works. Compare vs projective blue noise paper

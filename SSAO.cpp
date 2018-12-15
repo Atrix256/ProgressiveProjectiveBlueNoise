@@ -8,6 +8,29 @@ static const char* objFileName = "assets/teapot.obj";
 static ImageFloat g_gbuffer;
 
 typedef std::array<float, 3> Vec3;
+typedef std::array<float, 4> Vec4;
+
+typedef std::array<Vec4, 4> Mtx44;
+
+static float cotangent(float x)
+{
+    return cosf(x) / sinf(x);
+}
+
+static Mtx44 ProjectionMatrix(float fovy, float aspectRatio, float znear, float zfar)
+{
+    float yscale = cotangent(fovy / 2.0f);
+    float xscale = yscale / aspectRatio;
+    float A = zfar / (zfar - znear);
+    float B = -znear * A;
+
+    Mtx44 ret;
+    ret[0] = { xscale,   0.0f, 0.0f, 0.0f };
+    ret[1] = {   0.0f, yscale, 0.0f, 0.0f };
+    ret[2] = {   0.0f,   0.0f,    A, 1.0f };
+    ret[3] = {   0.0f,   0.0f,    B, 0.0f };
+    return ret;
+}
 
 static Vec3 RandomUnitVector(float r1, float r2)
 {
