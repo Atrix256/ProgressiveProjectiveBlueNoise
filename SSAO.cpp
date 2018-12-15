@@ -1,6 +1,9 @@
 #include "SSAO.h"
 #include <array>
 #include "tiny_obj_loader.h"
+#include "cache.h"
+
+static const char* objFileName = "assets/teapot.obj";
 
 static ImageFloat g_gbuffer;
 
@@ -165,7 +168,7 @@ static void Initialize()
 
     std::string warn;
     std::string err;
-    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, "assets/teapot.obj", nullptr, true);
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, objFileName, nullptr, true);
 
     bool firstVert = true;
     for (const auto& shape : shapes)
@@ -490,19 +493,19 @@ static void SamplePixelGBuffer(float* pixel, const Vec3& rayPos, const Vec3& ray
     pixel[3] = initialHitInfo.time;
 }
 
-void SSAOTestGetGBuffer(ImageFloat& gbuffer)
+struct MakeGBufferParams
 {
-    if (!g_initialized)
-        Initialize();
+    char objFileName[256] = {};
+    int width = 0;
+    int height = 0;
+};
 
-    // if the gbuffer already exists, use it
-    if (g_gbuffer.m_width != 0)
-    {
-        gbuffer = g_gbuffer;
-        return;
-    }
+void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& buffer)
+{
+    buffer.resize(sizeof(float)*params.width*params.width * 4);
+    float* pixels = (float*)buffer.data();
 
-    const float c_aspectRatio = float(gbuffer.m_width) / float(gbuffer.m_height);
+    const float c_aspectRatio = float(params.width) / float(params.height);
     const float c_cameraHorizFOV = c_ptCameraVerticalFOV * c_aspectRatio;
     const float c_windowTop = tan(c_ptCameraVerticalFOV / 2.0f) * c_ptNearPlaneDistance;
     const float c_windowRight = tan(c_cameraHorizFOV / 2.0f) * c_ptNearPlaneDistance;
@@ -523,18 +526,18 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer)
 
             bool reportProgress = (y == 0);
 
-            while (y < gbuffer.m_height)
+            while (y < params.height)
             {
                 if (reportProgress)
-                    printf("\rSSAO gbuffer: %i%%", int(100.0f * float(y) / float(gbuffer.m_height)));
+                    printf("\rSSAO gbuffer: %i%%", int(100.0f * float(y) / float(params.height)));
 
-                float* pixel = &gbuffer.m_pixels[y*gbuffer.m_width * 4];
+                float* pixel = &pixels[y*params.width * 4];
 
                 // raytrace every pixel / frequency in this row
-                for (size_t x = 0; x < gbuffer.m_width; ++x)
+                for (size_t x = 0; x < params.width; ++x)
                 {
-                    float u = float(x) / float(gbuffer.m_width - 1);
-                    float v = float(y) / float(gbuffer.m_height - 1);
+                    float u = float(x) / float(params.width - 1);
+                    float v = float(y) / float(params.height - 1);
 
                     // make (u,v) go from [-1,1] instead of [0,1]
                     u = u * 2.0f - 1.0f;
@@ -563,6 +566,31 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer)
 
     for (std::thread& t : threads)
         t.join();
+}
+
+void SSAOTestGetGBuffer(ImageFloat& gbuffer)
+{
+    if (!g_initialized)
+        Initialize();
+
+    // if the gbuffer already exists, use it
+    if (g_gbuffer.m_width != 0)
+    {
+        gbuffer = g_gbuffer;
+        return;
+    }
+
+    // get the data from the cache, or make it
+    MakeGBufferParams params;
+    memset(&params, 0, sizeof(params));
+    params.width = gbuffer.m_width;
+    params.height = gbuffer.m_height;
+    strcpy_s(params.objFileName, objFileName);
+    std::vector<unsigned char> buffer;
+    MakeDataCached(MakeGBuffer, params, buffer);
+
+    // use the data to make the gbuffer
+    memcpy(gbuffer.m_pixels.data(), buffer.data(), buffer.size());
 
     // store this off to use again
     g_gbuffer = gbuffer;

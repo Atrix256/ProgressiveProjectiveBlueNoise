@@ -122,6 +122,7 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="AO.h" />
+    <ClInclude Include="cache.h" />
     <ClInclude Include="image.h" />
     <ClInclude Include="raytrace.h" />
     <ClInclude Include="SSAO.h" />

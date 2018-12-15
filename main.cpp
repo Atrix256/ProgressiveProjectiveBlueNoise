@@ -1970,8 +1970,7 @@ int main(int argc, char **argv)
 /*
 TODO:
 
-* have some kind of content addressable storage cache. This could store the gbuffer data for instance and let you iterate on SSAO more quickly. check this in or not?
-
+* put an obj (dragon? teapot?) on a plane for SSAO?
 
 1) Do SSAO -> see how R2 looks.
 2) see how your projective blue noise looks / works. Compare vs projective blue noise paper
