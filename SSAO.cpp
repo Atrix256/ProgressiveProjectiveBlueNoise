@@ -12,9 +12,43 @@ typedef std::array<float, 4> Vec4;
 
 typedef std::array<Vec4, 4> Mtx44;
 
+//static float c_pi = 3.14159265359f;
+
+static float DegreesToRadians(float degrees)
+{
+    return degrees * c_pi / 180.0f;
+}
+
 static float cotangent(float x)
 {
     return cosf(x) / sinf(x);
+}
+
+float Dot(const Vec4& A, const Vec4& B)
+{
+    float ret = 0;
+    for (int i = 0; i < 4; ++i)
+        ret += A[i] * B[i];
+    return ret;
+}
+
+static Mtx44 IdentityMatrix(float fovy, float aspectRatio, float znear, float zfar)
+{
+    Mtx44 ret;
+    ret[0] = { 1.0f, 0.0f, 0.0f, 0.0f };
+    ret[1] = { 0.0f, 1.0f, 0.0f, 0.0f };
+    ret[2] = { 0.0f, 0.0f, 1.0f, 0.0f };
+    ret[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    return ret;
+}
+
+static Mtx44 Transpose(const Mtx44& mtx)
+{
+    Mtx44 ret;
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            ret[i][j] = mtx[j][i];
+    return ret;
 }
 
 static Mtx44 ProjectionMatrix(float fovy, float aspectRatio, float znear, float zfar)
@@ -29,6 +63,26 @@ static Mtx44 ProjectionMatrix(float fovy, float aspectRatio, float znear, float 
     ret[1] = {   0.0f, yscale, 0.0f, 0.0f };
     ret[2] = {   0.0f,   0.0f,    A, 1.0f };
     ret[3] = {   0.0f,   0.0f,    B, 0.0f };
+    return Transpose(ret);
+}
+
+Vec4 Multiply(const Mtx44& mtx, const Vec4& vec)
+{
+    Vec4 ret;
+    for (int i = 0; i < 4; ++i)
+        ret[i] = Dot(mtx[i], vec);
+    return ret;
+}
+
+Vec3 ProjectPoint(const Mtx44& mtx, const Vec3& p)
+{
+    Vec4 point = { p[0], p[1], p[2], 1.0f };
+    point = Multiply(mtx, point);
+
+    Vec3 ret;
+    ret[0] = point[0] / point[3];
+    ret[1] = point[1] / point[3];
+    ret[2] = point[2] / point[3];
     return ret;
 }
 
@@ -518,15 +572,34 @@ static void SamplePixelGBuffer(float* pixel, const Vec3& rayPos, const Vec3& ray
 
 struct MakeGBufferParams
 {
-    char objFileName[256] = {};
+    MakeGBufferParams()
+    {
+        memset(objFileName, 0, sizeof(objFileName));
+    }
+
+    char objFileName[256];
     int width = 0;
     int height = 0;
+    float fovy = DegreesToRadians(90.0f);
+    float znear = 0.1f;
+    float zfar = 10.0f;
 };
 
 void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& buffer)
 {
     buffer.resize(sizeof(float)*params.width*params.width * 4);
     float* pixels = (float*)buffer.data();
+
+    float aspectRatio = float(params.width) / float(params.height);
+    Mtx44 projMtx = ProjectionMatrix(params.fovy, aspectRatio, params.znear, params.zfar);
+
+    auto a = ProjectPoint(projMtx, { 1.0f, 1.0f, 1.0f});
+    auto b = ProjectPoint(projMtx, { 1.0f, 1.0f, 2.0f});
+    auto c = ProjectPoint(projMtx, { 1.0f, 1.0f, 3.0f});
+    auto d = ProjectPoint(projMtx, { 1.0f, 1.0f, 9.0f });
+    auto e = ProjectPoint(projMtx, { -1.0f, -1.0f, 9.0f });
+
+    // TODO: make the rays use the projection matrix
 
     const float c_aspectRatio = float(params.width) / float(params.height);
     const float c_cameraHorizFOV = c_ptCameraVerticalFOV * c_aspectRatio;
@@ -605,7 +678,6 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer)
 
     // get the data from the cache, or make it
     MakeGBufferParams params;
-    memset(&params, 0, sizeof(params));
     params.width = gbuffer.m_width;
     params.height = gbuffer.m_height;
     strcpy_s(params.objFileName, objFileName);
