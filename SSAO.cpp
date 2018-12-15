@@ -149,6 +149,8 @@ static Mtx44 ProjectionMatrix(float fovy, float aspectRatio, float znear, float 
     float A = zfar / (zfar - znear);
     float B = -znear * A;
 
+    // TODO: just make the matrix transposed!
+
     Mtx44 ret;
     ret[0] = { xscale,   0.0f, 0.0f, 0.0f };
     ret[1] = {   0.0f, yscale, 0.0f, 0.0f };
@@ -157,11 +159,49 @@ static Mtx44 ProjectionMatrix(float fovy, float aspectRatio, float znear, float 
     return Transpose(ret);
 }
 
+static Mtx44 ScaleMatrix(const Vec3& scale)
+{
+    Mtx44 ret;
+    ret[0] = { scale[0], 0.0f, 0.0f, 0.0f };
+    ret[1] = { 0.0f, scale[1], 0.0f, 0.0f };
+    ret[2] = { 0.0f, 0.0f, scale[2], 0.0f };
+    ret[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    return Transpose(ret);
+}
+
+
+static Mtx44 TranslationMatrix(const Vec3& translation)
+{
+    // TODO: just make the matrix transposed!
+
+    Mtx44 ret;
+    ret[0] = { 1.0f, 0.0f, 0.0f, 0.0f };
+    ret[1] = { 0.0f, 1.0f, 0.0f, 0.0f };
+    ret[2] = { 0.0f, 0.0f, 1.0f, 0.0f };
+    ret[3] = { translation[0], translation[1], translation[2], 1.0f };
+    return Transpose(ret);
+}
+
 Vec4 Multiply(const Mtx44& mtx, const Vec4& vec)
 {
     Vec4 ret;
     for (int i = 0; i < 4; ++i)
         ret[i] = Dot(mtx[i], vec);
+    return ret;
+}
+
+Mtx44 Multiply(const Mtx44& A, const Mtx44& B)
+{
+    Mtx44 BTransposed = Transpose(B);
+
+    Mtx44 ret;
+    for (int i = 0; i < 4; ++i)
+    {
+        for (int j = 0; j < 4; ++j)
+        {
+            ret[i][j] = Dot(A[i], BTransposed[j]);
+        }
+    }
     return ret;
 }
 
@@ -393,13 +433,12 @@ static void Initialize()
     // center and normalize this so the longest axis is 1.0, and apply an offset for the camera
     Vec3 center = (s_sceneMin + s_sceneMax) / 2.0f;
     float longestRadius = 0.5f * std::max(s_sceneMax[0] - s_sceneMin[0], std::max(s_sceneMax[1] - s_sceneMin[1], s_sceneMax[2] - s_sceneMin[2]));
-    longestRadius *= 1.1f; // give some extra padding at the walls
-    Vec3 offset = { 0.0f, 0.0f, 5.0f };
+    longestRadius *= 1.1f; // give some extra padding so things aren't right against the wall
     for (auto& triangle : s_Triangles)
     {
-        triangle.A = offset + (triangle.A - center) / longestRadius;
-        triangle.B = offset + (triangle.B - center) / longestRadius;
-        triangle.C = offset + (triangle.C - center) / longestRadius;
+        triangle.A = (triangle.A - center) / longestRadius;
+        triangle.B = (triangle.B - center) / longestRadius;
+        triangle.C = (triangle.C - center) / longestRadius;
     }
 
     // add a box that is -1 to 1 on each axis, and the offset is added
@@ -407,16 +446,16 @@ static void Initialize()
 
     // left wall
     {
-        triangle.A = Vec3{ -1.0f, -1.0f, -1.0f } +offset;
-        triangle.B = Vec3{ -1.0f, -1.0f,  1.0f } +offset;
-        triangle.C = Vec3{ -1.0f,  1.0f,  1.0f } +offset;
+        triangle.A = Vec3{ -1.0f, -1.0f, -1.0f };
+        triangle.B = Vec3{ -1.0f, -1.0f,  1.0f };
+        triangle.C = Vec3{ -1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ 1.0f, 0.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
-        triangle.A = Vec3{ -1.0f, -1.0f, -1.0f } +offset;
-        triangle.B = Vec3{ -1.0f,  1.0f,  1.0f } +offset;
-        triangle.C = Vec3{ -1.0f,  1.0f, -1.0f } +offset;
+        triangle.A = Vec3{ -1.0f, -1.0f, -1.0f };
+        triangle.B = Vec3{ -1.0f,  1.0f,  1.0f };
+        triangle.C = Vec3{ -1.0f,  1.0f, -1.0f };
         triangle.Normal = Vec3{ 1.0f, 0.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
@@ -424,16 +463,16 @@ static void Initialize()
 
     // right wall
     {
-        triangle.A = Vec3{  1.0f, -1.0f, -1.0f } +offset;
-        triangle.B = Vec3{  1.0f, -1.0f,  1.0f } +offset;
-        triangle.C = Vec3{  1.0f,  1.0f,  1.0f } +offset;
+        triangle.A = Vec3{ 1.0f, -1.0f, -1.0f };
+        triangle.B = Vec3{ 1.0f, -1.0f,  1.0f };
+        triangle.C = Vec3{  1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ -1.0f, 0.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
-        triangle.A = Vec3{ 1.0f, -1.0f, -1.0f } +offset;
-        triangle.B = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
-        triangle.C = Vec3{ 1.0f,  1.0f, -1.0f } +offset;
+        triangle.A = Vec3{ 1.0f, -1.0f, -1.0f };
+        triangle.B = Vec3{ 1.0f,  1.0f,  1.0f };
+        triangle.C = Vec3{ 1.0f,  1.0f, -1.0f };
         triangle.Normal = Vec3{ -1.0f, 0.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
@@ -441,16 +480,16 @@ static void Initialize()
 
     // top wall
     {
-        triangle.A = Vec3{-1.0f,  1.0f, -1.0f } +offset;
-        triangle.B = Vec3{-1.0f,  1.0f,  1.0f } +offset;
-        triangle.C = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
+        triangle.A = Vec3{-1.0f,  1.0f, -1.0f };
+        triangle.B = Vec3{-1.0f,  1.0f,  1.0f };
+        triangle.C = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ 0.0f, -1.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
-        triangle.A = Vec3{-1.0f,  1.0f, -1.0f } +offset;
-        triangle.B = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
-        triangle.C = Vec3{ 1.0f,  1.0f, -1.0f } +offset;
+        triangle.A = Vec3{-1.0f,  1.0f, -1.0f };
+        triangle.B = Vec3{ 1.0f,  1.0f,  1.0f };
+        triangle.C = Vec3{ 1.0f,  1.0f, -1.0f };
         triangle.Normal = Vec3{ 0.0f, -1.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
@@ -458,16 +497,16 @@ static void Initialize()
 
     // bottom wall
     {
-        triangle.A = Vec3{ -1.0f,  -1.0f, -1.0f } +offset;
-        triangle.B = Vec3{ -1.0f,  -1.0f,  1.0f } +offset;
-        triangle.C = Vec3{ 1.0f,  -1.0f,  1.0f } +offset;
+        triangle.A = Vec3{ -1.0f,  -1.0f, -1.0f };
+        triangle.B = Vec3{ -1.0f,  -1.0f,  1.0f };
+        triangle.C = Vec3{ 1.0f,  -1.0f,  1.0f };
         triangle.Normal = Vec3{ 0.0f, 1.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
-        triangle.A = Vec3{ -1.0f,  -1.0f, -1.0f } +offset;
-        triangle.B = Vec3{ 1.0f,  -1.0f,  1.0f } +offset;
-        triangle.C = Vec3{ 1.0f,  -1.0f, -1.0f } +offset;
+        triangle.A = Vec3{ -1.0f,  -1.0f, -1.0f };
+        triangle.B = Vec3{ 1.0f,  -1.0f,  1.0f };
+        triangle.C = Vec3{ 1.0f,  -1.0f, -1.0f };
         triangle.Normal = Vec3{ 0.0f, 1.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
@@ -475,24 +514,24 @@ static void Initialize()
 
     // back wall
     {
-        triangle.A = Vec3{ -1.0f,  -1.0f, 1.0f } +offset;
-        triangle.B = Vec3{ -1.0f,  1.0f,  1.0f } +offset;
-        triangle.C = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
+        triangle.A = Vec3{ -1.0f,  -1.0f, 1.0f };
+        triangle.B = Vec3{ -1.0f,  1.0f,  1.0f };
+        triangle.C = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ 0.0f, 0.0f, -1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
-        triangle.A = Vec3{ -1.0f, -1.0f, 1.0f } +offset;
-        triangle.B = Vec3{ 1.0f,  1.0f,  1.0f } +offset;
-        triangle.C = Vec3{ 1.0f, -1.0f, 1.0f } +offset;
+        triangle.A = Vec3{ -1.0f, -1.0f, 1.0f };
+        triangle.B = Vec3{ 1.0f,  1.0f,  1.0f };
+        triangle.C = Vec3{ 1.0f, -1.0f, 1.0f };
         triangle.Normal = Vec3{ 0.0f, 0.0f, -1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
 
     // set the scene min and max
-    s_sceneMin = Vec3{ -1.0f, -1.0f, -1.0f } + offset;
-    s_sceneMax = Vec3{  1.0f,  1.0f,  1.0f } + offset;
+    s_sceneMin = Vec3{ -1.0f, -1.0f, -1.0f };
+    s_sceneMax = Vec3{  1.0f,  1.0f,  1.0f };
 }
 
 static inline bool RayIntersectsBox(const Vec3& rayPos, const Vec3& rayDir, const Vec3& min, const Vec3& max)
@@ -664,7 +703,7 @@ struct MakeGBufferParams
     char objFileName[256];
     int width = 0;
     int height = 0;
-    Mtx44 projMtx = IdentityMatrix();
+    Mtx44 viewProjMtx = IdentityMatrix();
 };
 
 void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& buffer)
@@ -672,11 +711,8 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
     buffer.resize(sizeof(float)*params.width*params.width * 4);
     float* pixels = (float*)buffer.data();
 
-    const Mtx44& projMtx = params.projMtx;
-    const Mtx44 projMtxInv = InvertMatrix(projMtx);
-
-    Vec3 one = ProjectPoint(projMtx, { 1.0f, 2.0f, 3.0f });
-    Vec3 two = ProjectPoint(projMtxInv, one);
+    const Mtx44& viewProjMtx = params.viewProjMtx;
+    const Mtx44 viewProjMtxInv = InvertMatrix(viewProjMtx);
 
     size_t numThreads = std::thread::hardware_concurrency();
     std::vector<std::thread> threads;
@@ -711,8 +747,8 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
                     v = v * 2.0f - 1.0f;
                     v *= -1.0f;
 
-                    Vec3 rayPos = { 0.0f, 0.0f, 0.0f };
-                    Vec3 rayTarget = ProjectPoint(projMtxInv, { u, v, 0.0f });
+                    Vec3 rayPos = ProjectPoint(viewProjMtxInv, { u, v, 0.0f });
+                    Vec3 rayTarget = ProjectPoint(viewProjMtxInv, { u, v, 1.0f });
                     Vec3 rayDir = Normalize(rayTarget - rayPos);
 
                     SamplePixelGBuffer(pixel, rayPos, rayDir);
@@ -745,13 +781,16 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer)
         return;
     }
 
-    // get the data from the cache, or make it
+    // make the view and projection matrices
     float aspectRatio = float(gbuffer.m_width) / float(gbuffer.m_height);
+    Mtx44 projMtx = ProjectionMatrix(DegreesToRadians(40.0f), aspectRatio, 0.1f, 100.0f);
+    Mtx44 viewMtx = TranslationMatrix({ 0.0f, 0.0f, 5.0f });
+
+    // get the data from the cache, or make it
     MakeGBufferParams params;
     params.width = gbuffer.m_width;
     params.height = gbuffer.m_height;
-    params.projMtx = ProjectionMatrix(DegreesToRadians(40.0f), aspectRatio, 0.1f, 10.0f);
-
+    params.viewProjMtx = Multiply(projMtx, viewMtx);
     strcpy_s(params.objFileName, objFileName);
     std::vector<unsigned char> buffer;
     MakeDataCached(MakeGBuffer, params, buffer);
