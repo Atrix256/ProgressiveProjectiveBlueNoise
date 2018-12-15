@@ -1970,7 +1970,7 @@ int main(int argc, char **argv)
 /*
 TODO:
 
-* i think you need a camera / proj matrix so we can convert screenpos / depth to world space (camera space) units
+* make a camera matrix too, instead of offsetting vertices from the origin
 
 1) Do SSAO -> see how R2 looks.
 2) see how your projective blue noise looks / works. Compare vs projective blue noise paper

@@ -12,6 +12,14 @@ typedef std::array<float, 4> Vec4;
 
 typedef std::array<Vec4, 4> Mtx44;
 
+// Define a vector as an array of floats
+template<size_t N>
+using TVector = std::array<float, N>;
+
+// Define a matrix as an array of vectors
+template<size_t M, size_t N>
+using TMatrix = std::array<TVector<N>, M>;
+
 //static float c_pi = 3.14159265359f;
 
 static float DegreesToRadians(float degrees)
@@ -32,7 +40,90 @@ float Dot(const Vec4& A, const Vec4& B)
     return ret;
 }
 
-static Mtx44 IdentityMatrix(float fovy, float aspectRatio, float znear, float zfar)
+// Make a specific row have a 1 in the colIndex, and make all other rows have 0 there
+template <size_t M, size_t N>
+bool MakeRowClaimVariable(TMatrix<M, N>& matrix, size_t rowIndex, size_t colIndex)
+{
+    // Find a row that has a non zero value in this column and swap it with this row
+    {
+        // Find a row that has a non zero value
+        size_t nonZeroRowIndex = rowIndex;
+        while (nonZeroRowIndex < M && matrix[nonZeroRowIndex][colIndex] == 0.0f)
+            ++nonZeroRowIndex;
+
+        // If there isn't one, nothing to do
+        if (nonZeroRowIndex == M)
+            return false;
+
+        // Otherwise, swap the row
+        if (rowIndex != nonZeroRowIndex)
+            std::swap(matrix[rowIndex], matrix[nonZeroRowIndex]);
+    }
+
+    // Scale this row so that it has a leading one
+    float scale = 1.0f / matrix[rowIndex][colIndex];
+    for (size_t normalizeColIndex = colIndex; normalizeColIndex < N; ++normalizeColIndex)
+        matrix[rowIndex][normalizeColIndex] *= scale;
+
+    // Make sure all rows except this one have a zero in this column.
+    // Do this by subtracting this row from other rows, multiplied by a multiple that makes the column disappear.
+    for (size_t eliminateRowIndex = 0; eliminateRowIndex < M; ++eliminateRowIndex)
+    {
+        if (eliminateRowIndex == rowIndex)
+            continue;
+
+        float scale = matrix[eliminateRowIndex][colIndex];
+        for (size_t eliminateColIndex = 0; eliminateColIndex < N; ++eliminateColIndex)
+            matrix[eliminateRowIndex][eliminateColIndex] -= matrix[rowIndex][eliminateColIndex] * scale;
+    }
+
+    return true;
+}
+
+// make matrix into reduced row echelon form
+template <size_t M, size_t N>
+void GaussJordanElimination(TMatrix<M, N>& matrix)
+{
+    size_t rowIndex = 0;
+    for (size_t colIndex = 0; colIndex < N; ++colIndex)
+    {
+        if (MakeRowClaimVariable(matrix, rowIndex, colIndex))
+        {
+            ++rowIndex;
+            if (rowIndex == M)
+                return;
+        }
+    }
+}
+
+Mtx44 InvertMatrix(const Mtx44& matrix)
+{
+    // build an augmented matrix
+    TMatrix<4, 8> augmentedMatrix;
+    for (int i = 0; i < 4; ++i)
+    {
+        for (int j = 0; j < 4; ++j)
+        {
+            // matrix on the left
+            augmentedMatrix[i][j] = matrix[i][j];
+
+            // identity on the right
+            augmentedMatrix[i][j + 4] = (i == j) ? 1.0f : 0.0f;
+        }
+    }
+
+    // invert
+    GaussJordanElimination(augmentedMatrix);
+
+    // extract the inverted matrix from the right side
+    Mtx44 ret;
+    for (int i = 0; i < 4; ++i)
+        for (int j = 0; j < 4; ++j)
+            ret[i][j] = augmentedMatrix[i][j + 4];
+    return ret;
+}
+
+static Mtx44 IdentityMatrix()
 {
     Mtx44 ret;
     ret[0] = { 1.0f, 0.0f, 0.0f, 0.0f };
@@ -194,13 +285,6 @@ static inline Vec3 operator - (const Vec3& a, const Vec3& b)
         a[2] - b[2],
     };
 }
-
-static const Vec3 c_ptCameraPos = { 0.0f, 0.0f, 0.0f };
-static const Vec3 c_ptCameraFwd = { 0.0f, 0.0f, 1.0f };
-static const Vec3 c_ptCameraUp  = { 0.0f, 1.0f, 0.0f };
-
-static const float c_ptNearPlaneDistance = 0.1f;
-static const float c_ptCameraVerticalFOV = 40.0f * c_pi / 180.0f;
 
 struct Sphere
 {
@@ -580,9 +664,7 @@ struct MakeGBufferParams
     char objFileName[256];
     int width = 0;
     int height = 0;
-    float fovy = DegreesToRadians(90.0f);
-    float znear = 0.1f;
-    float zfar = 10.0f;
+    Mtx44 projMtx = IdentityMatrix();
 };
 
 void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& buffer)
@@ -590,22 +672,11 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
     buffer.resize(sizeof(float)*params.width*params.width * 4);
     float* pixels = (float*)buffer.data();
 
-    float aspectRatio = float(params.width) / float(params.height);
-    Mtx44 projMtx = ProjectionMatrix(params.fovy, aspectRatio, params.znear, params.zfar);
+    const Mtx44& projMtx = params.projMtx;
+    const Mtx44 projMtxInv = InvertMatrix(projMtx);
 
-    auto a = ProjectPoint(projMtx, { 1.0f, 1.0f, 1.0f});
-    auto b = ProjectPoint(projMtx, { 1.0f, 1.0f, 2.0f});
-    auto c = ProjectPoint(projMtx, { 1.0f, 1.0f, 3.0f});
-    auto d = ProjectPoint(projMtx, { 1.0f, 1.0f, 9.0f });
-    auto e = ProjectPoint(projMtx, { -1.0f, -1.0f, 9.0f });
-
-    // TODO: make the rays use the projection matrix
-
-    const float c_aspectRatio = float(params.width) / float(params.height);
-    const float c_cameraHorizFOV = c_ptCameraVerticalFOV * c_aspectRatio;
-    const float c_windowTop = tan(c_ptCameraVerticalFOV / 2.0f) * c_ptNearPlaneDistance;
-    const float c_windowRight = tan(c_cameraHorizFOV / 2.0f) * c_ptNearPlaneDistance;
-    const Vec3 c_cameraRight = Cross(c_ptCameraUp, c_ptCameraFwd);
+    Vec3 one = ProjectPoint(projMtx, { 1.0f, 2.0f, 3.0f });
+    Vec3 two = ProjectPoint(projMtxInv, one);
 
     size_t numThreads = std::thread::hardware_concurrency();
     std::vector<std::thread> threads;
@@ -640,11 +711,9 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
                     v = v * 2.0f - 1.0f;
                     v *= -1.0f;
 
-                    // find where the ray hits the near plane, and normalize that vector to get the ray direction.
-                    Vec3 rayPos = c_ptCameraPos + c_ptCameraFwd * c_ptNearPlaneDistance;
-                    rayPos += c_cameraRight * c_windowRight * u;
-                    rayPos += c_ptCameraUp * c_windowTop * v;
-                    Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
+                    Vec3 rayPos = { 0.0f, 0.0f, 0.0f };
+                    Vec3 rayTarget = ProjectPoint(projMtxInv, { u, v, 0.0f });
+                    Vec3 rayDir = Normalize(rayTarget - rayPos);
 
                     SamplePixelGBuffer(pixel, rayPos, rayDir);
                     pixel += 4;
@@ -677,9 +746,12 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer)
     }
 
     // get the data from the cache, or make it
+    float aspectRatio = float(gbuffer.m_width) / float(gbuffer.m_height);
     MakeGBufferParams params;
     params.width = gbuffer.m_width;
     params.height = gbuffer.m_height;
+    params.projMtx = ProjectionMatrix(DegreesToRadians(40.0f), aspectRatio, 0.1f, 10.0f);
+
     strcpy_s(params.objFileName, objFileName);
     std::vector<unsigned char> buffer;
     MakeDataCached(MakeGBuffer, params, buffer);
@@ -701,83 +773,4 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
     SSAOTestGetGBuffer(gbuffer);
 
     // TODO: SSAO
-
-    return;
-
-    // TODO: do screen space AO, rasterization style
-
-    const float c_aspectRatio = float(image.m_width) / float(image.m_height);
-    const float c_cameraHorizFOV = c_ptCameraVerticalFOV * c_aspectRatio;
-    const float c_windowTop = tan(c_ptCameraVerticalFOV / 2.0f) * c_ptNearPlaneDistance;
-    const float c_windowRight = tan(c_cameraHorizFOV / 2.0f) * c_ptNearPlaneDistance;
-    const Vec3 c_cameraRight = Cross(c_ptCameraUp, c_ptCameraFwd);
-
-    size_t numThreads = std::thread::hardware_concurrency();
-    std::vector<std::thread> threads;
-    threads.resize(numThreads);
-
-    char prefix[256];
-    sprintf_s(prefix, "Raytracing %zu samples with %zu threads: ", (endSampleCount - startSampleCount), numThreads);
-
-    std::atomic<size_t> nextRow(0);
-    for (std::thread& t : threads)
-    {
-        t = std::thread(
-            [&]()
-            {
-                size_t y = nextRow.fetch_add(1);
-                bool reportProgress = y == 0;
-                int lastPercent = -1;
-
-                while (y < image.m_height)
-                {
-                    float* pixel = &image.m_pixels[y*image.m_width*4];
-                    const Vec2* rnd = &whiteNoise[y*image.m_width];
-
-                    // raytrace every pixel / frequency in this row
-                    for (size_t x = 0; x < image.m_width; ++x)
-                    {
-                        float u = float(x) / float(image.m_width - 1);
-                        float v = float(y) / float(image.m_height - 1);
-
-                        // make (u,v) go from [-1,1] instead of [0,1]
-                        u = u * 2.0f - 1.0f;
-                        v = v * 2.0f - 1.0f;
-                        v *= -1.0f;
-
-                        // find where the ray hits the near plane, and normalize that vector to get the ray direction.
-                        Vec3 rayPos = c_ptCameraPos + c_ptCameraFwd * c_ptNearPlaneDistance;
-                        rayPos += c_cameraRight * c_windowRight * u;
-                        rayPos += c_ptCameraUp * c_windowTop * v;
-                        Vec3 rayDir = Normalize(rayPos - c_ptCameraPos);
-
-                        //if (decorrelate)
-                          //  SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, *rnd);
-                        //else
-                          //  SamplePixel(pixel, rayPos, rayDir, startSampleCount, endSampleCount, points, Vec2{ 0.0f, 0.0f });
-                        pixel += 4;
-                        ++rnd;
-                    }
-
-                    // report progress if we should
-                    if (reportProgress)
-                    {
-                        int percent = int(100.0f * float(y) / float(image.m_height));
-                        if (lastPercent != percent)
-                        {
-                            lastPercent = percent;
-                            printf("\r%s %i%%", prefix, lastPercent);
-                        }
-                    }
-
-                    // go to the next row
-                    y = nextRow.fetch_add(1);
-                }
-            }
-        );
-    }
-
-    for (std::thread& t : threads)
-        t.join();
-    printf("\r%s 100%%\n", prefix);
 }
