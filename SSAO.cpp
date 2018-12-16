@@ -149,14 +149,12 @@ static Mtx44 ProjectionMatrix(float fovy, float aspectRatio, float znear, float 
     float A = zfar / (zfar - znear);
     float B = -znear * A;
 
-    // TODO: just make the matrix transposed!
-
     Mtx44 ret;
     ret[0] = { xscale,   0.0f, 0.0f, 0.0f };
     ret[1] = {   0.0f, yscale, 0.0f, 0.0f };
-    ret[2] = {   0.0f,   0.0f,    A, 1.0f };
-    ret[3] = {   0.0f,   0.0f,    B, 0.0f };
-    return Transpose(ret);
+    ret[2] = {   0.0f,   0.0f,    A,    B };
+    ret[3] = {   0.0f,   0.0f, 1.0f, 0.0f };
+    return ret;
 }
 
 static Mtx44 ScaleMatrix(const Vec3& scale)
@@ -166,20 +164,17 @@ static Mtx44 ScaleMatrix(const Vec3& scale)
     ret[1] = { 0.0f, scale[1], 0.0f, 0.0f };
     ret[2] = { 0.0f, 0.0f, scale[2], 0.0f };
     ret[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
-    return Transpose(ret);
+    return ret;
 }
-
 
 static Mtx44 TranslationMatrix(const Vec3& translation)
 {
-    // TODO: just make the matrix transposed!
-
     Mtx44 ret;
-    ret[0] = { 1.0f, 0.0f, 0.0f, 0.0f };
-    ret[1] = { 0.0f, 1.0f, 0.0f, 0.0f };
-    ret[2] = { 0.0f, 0.0f, 1.0f, 0.0f };
-    ret[3] = { translation[0], translation[1], translation[2], 1.0f };
-    return Transpose(ret);
+    ret[0] = { 1.0f, 0.0f, 0.0f, translation[0] };
+    ret[1] = { 0.0f, 1.0f, 0.0f, translation[1] };
+    ret[2] = { 0.0f, 0.0f, 1.0f, translation[2] };
+    ret[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    return ret;
 }
 
 Vec4 Multiply(const Mtx44& mtx, const Vec4& vec)

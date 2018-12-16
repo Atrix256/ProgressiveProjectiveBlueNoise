@@ -1970,8 +1970,6 @@ int main(int argc, char **argv)
 /*
 TODO:
 
-* make a camera matrix too, instead of offsetting vertices from the origin
-
 1) Do SSAO -> see how R2 looks.
 2) see how your projective blue noise looks / works. Compare vs projective blue noise paper
 
