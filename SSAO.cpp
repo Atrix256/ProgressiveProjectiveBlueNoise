@@ -3,7 +3,11 @@
 #include "tiny_obj_loader.h"
 #include "cache.h"
 
-static const char* objFileName = "assets/teapot.obj";
+//static const char* objFileName = "assets/teapot.obj";
+static const char* objFileName = "assets/bunny.obj";
+//static const char* objFileName = "assets/dragon.obj";
+
+// TODO: erato!
 
 static ImageFloat g_gbuffer;
 
