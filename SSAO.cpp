@@ -3,18 +3,12 @@
 #include "tiny_obj_loader.h"
 #include "cache.h"
 
-//static const char* objFileName = "assets/teapot.obj";
-static const char* objFileName = "assets/bunny.obj";
+static const char* objFileName = "assets/teapot.obj";
+//static const char* objFileName = "assets/bunny.obj";
 //static const char* objFileName = "assets/dragon.obj";
-
-// TODO: erato!
+//static const char* objFileName = "assets/erato.obj";
 
 static ImageFloat g_gbuffer;
-
-typedef std::array<float, 3> Vec3;
-typedef std::array<float, 4> Vec4;
-
-typedef std::array<Vec4, 4> Mtx44;
 
 // Define a vector as an array of floats
 template<size_t N>
@@ -24,7 +18,6 @@ using TVector = std::array<float, N>;
 template<size_t M, size_t N>
 using TMatrix = std::array<TVector<N>, M>;
 
-//static float c_pi = 3.14159265359f;
 
 static float DegreesToRadians(float degrees)
 {
@@ -269,6 +262,15 @@ static inline Vec3 operator * (const Vec3& v, float f)
     };
 }
 
+static inline Vec2 operator * (const Vec2& v, float f)
+{
+    return
+    {
+        v[0] * f,
+        v[1] * f,
+    };
+}
+
 static inline Vec3 operator / (const Vec3& v, float f)
 {
     return
@@ -285,6 +287,13 @@ static inline Vec3 operator *= (Vec3& v, float f)
     v[1] *= f;
     v[2] *= f;
     return v;
+}
+
+static inline Vec2 operator *= (Vec2& a, const Vec2& b)
+{
+    a[0] *= b[0];
+    a[1] *= b[1];
+    return a;
 }
 
 static inline Vec3 operator += (Vec3& a, const Vec3& b)
@@ -315,6 +324,15 @@ static inline Vec3 operator + (const Vec3& a, const Vec3& b)
     };
 }
 
+static inline Vec2 operator + (const Vec2& a, float f)
+{
+    return
+    {
+        a[0] + f,
+        a[1] + f,
+    };
+}
+
 static inline Vec3 operator - (const Vec3& a, const Vec3& b)
 {
     return
@@ -340,6 +358,7 @@ struct Triangle
     Vec3 B;
     Vec3 C;
     Vec3 Normal;
+    Vec3 Tangent;
 };
 
 static int g_nextId = 0;
@@ -696,14 +715,29 @@ struct MakeGBufferParams
 {
     MakeGBufferParams()
     {
-        memset(objFileName, 0, sizeof(objFileName));
+        memset(this, 0, sizeof(MakeGBufferParams));
     }
 
     char objFileName[256];
-    int width = 0;
-    int height = 0;
-    Mtx44 viewProjMtx = IdentityMatrix();
+    int width;
+    int height;
+    Mtx44 viewProjMtx;
 };
+
+inline void GetRayForPixel(const Mtx44& viewProjMtxInv, int x, int y, int width, int height, Vec3& rayPos, Vec3& rayDir)
+{
+    float u = float(x) / float(width - 1);
+    float v = float(y) / float(height - 1);
+
+    // make (u,v) go from [-1,1] instead of [0,1]
+    u = u * 2.0f - 1.0f;
+    v = v * 2.0f - 1.0f;
+    v *= -1.0f;
+
+    rayPos = ProjectPoint(viewProjMtxInv, { u, v, 0.0f });
+    Vec3 rayTarget = ProjectPoint(viewProjMtxInv, { u, v, 1.0f });
+    rayDir = Normalize(rayTarget - rayPos);
+}
 
 void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& buffer)
 {
@@ -717,13 +751,13 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
     std::vector<std::thread> threads;
     threads.resize(numThreads);
 
-    std::atomic<size_t> nextRow(0);
+    std::atomic<int> nextRow(0);
     for (std::thread& t : threads)
     {
         t = std::thread(
             [&]()
         {
-            size_t y = nextRow.fetch_add(1);
+            int y = nextRow.fetch_add(1);
             int lastPercent = -1;
 
             bool reportProgress = (y == 0);
@@ -736,19 +770,11 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
                 float* pixel = &pixels[y*params.width * 4];
 
                 // raytrace every pixel / frequency in this row
-                for (size_t x = 0; x < params.width; ++x)
+                for (int x = 0; x < params.width; ++x)
                 {
-                    float u = float(x) / float(params.width - 1);
-                    float v = float(y) / float(params.height - 1);
-
-                    // make (u,v) go from [-1,1] instead of [0,1]
-                    u = u * 2.0f - 1.0f;
-                    v = v * 2.0f - 1.0f;
-                    v *= -1.0f;
-
-                    Vec3 rayPos = ProjectPoint(viewProjMtxInv, { u, v, 0.0f });
-                    Vec3 rayTarget = ProjectPoint(viewProjMtxInv, { u, v, 1.0f });
-                    Vec3 rayDir = Normalize(rayTarget - rayPos);
+                    Vec3 rayPos;
+                    Vec3 rayDir;
+                    GetRayForPixel(viewProjMtxInv, x, y, params.width, params.height, rayPos, rayDir);
 
                     SamplePixelGBuffer(pixel, rayPos, rayDir);
                     pixel += 4;
@@ -768,10 +794,16 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
         t.join();
 }
 
-void SSAOTestGetGBuffer(ImageFloat& gbuffer)
+void SSAOTestGetGBuffer(ImageFloat& gbuffer, Mtx44& viewProjMtx)
 {
     if (!g_initialized)
         Initialize();
+
+    // make the view and projection matrices
+    float aspectRatio = float(gbuffer.m_width) / float(gbuffer.m_height);
+    Mtx44 projMtx = ProjectionMatrix(DegreesToRadians(40.0f), aspectRatio, 0.1f, 100.0f);
+    Mtx44 viewMtx = TranslationMatrix({ 0.0f, 0.0f, 5.0f });
+    viewProjMtx = Multiply(projMtx, viewMtx);
 
     // if the gbuffer already exists, use it
     if (g_gbuffer.m_width != 0)
@@ -780,17 +812,13 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer)
         return;
     }
 
-    // make the view and projection matrices
-    float aspectRatio = float(gbuffer.m_width) / float(gbuffer.m_height);
-    Mtx44 projMtx = ProjectionMatrix(DegreesToRadians(40.0f), aspectRatio, 0.1f, 100.0f);
-    Mtx44 viewMtx = TranslationMatrix({ 0.0f, 0.0f, 5.0f });
-
     // get the data from the cache, or make it
     MakeGBufferParams params;
     params.width = gbuffer.m_width;
     params.height = gbuffer.m_height;
-    params.viewProjMtx = Multiply(projMtx, viewMtx);
-    strcpy_s(params.objFileName, objFileName);
+    params.viewProjMtx = viewProjMtx;
+    // strcpy_s puts "debug" values in the buffer past the null terminator in debug so makes the hash different. WTF. So, using memcpy instead
+    memcpy(params.objFileName, objFileName, strlen(objFileName) + 1); 
     std::vector<unsigned char> buffer;
     MakeDataCached(MakeGBuffer, params, buffer);
 
@@ -801,14 +829,132 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer)
     g_gbuffer = gbuffer;
 }
 
-void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points, std::vector<Vec2>& whiteNoise, bool decorrelate)
+Vec3 Sample2DToSphereSample(Vec2 sample2D)
+{
+    // calculate unfiromly distributed polar coordinates 
+    float theta = sample2D[0] * c_pi * 2.0f;
+    float phi = acos(2.0f * sample2D[1] - 1.0f);
+
+    // TODO: need to do decorrelation in here. There is a thing involving random vectors (white noise). maybe that? sucks adding white noise in though.
+
+    // TODO: get a 3rd random number in [0,1], and cube root it to get the distance
+    float radius = 1.0f;
+
+    Vec3 ret;
+    ret[0] = radius * cos(theta) * sin(phi);
+    ret[1] = radius * sin(theta) * sin(phi);
+    ret[2] = radius * cos(phi);
+    return ret;
+}
+
+void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points)
 {
     if (!g_initialized)
         Initialize();
 
     // get the gbuffer
+    Mtx44 viewProjMtx, viewProjMtxInv;
     ImageFloat gbuffer(image.m_width, image.m_height);
-    SSAOTestGetGBuffer(gbuffer);
+    SSAOTestGetGBuffer(gbuffer, viewProjMtx);
+    viewProjMtxInv = InvertMatrix(viewProjMtx);
+
+    // TODO: pass from caller?
+    const float c_AORadius = 0.1f;
+
+    // Do the SSAO
+    const float* gbufferPixel = gbuffer.m_pixels.data();
+    float* pixel = image.m_pixels.data();
+    for (int y = 0; y < image.m_height; ++y)
+    {
+        for (int x = 0; x < image.m_width; ++x)
+        {
+            // skip pixels that were missed by rays
+            if (gbufferPixel[3] == FLT_MAX)
+            {
+                pixel[0] = 0.0f;
+                pixel[1] = 0.0f;
+                pixel[2] = 0.0f;
+                pixel[3] = 1.0f;
+
+                gbufferPixel += 4;
+                pixel += 4;
+
+                continue;
+            }
+
+            Vec3 rayPos;
+            Vec3 rayDir;
+            GetRayForPixel(viewProjMtxInv, x, y, image.m_width, image.m_height, rayPos, rayDir);
+
+            Vec3& gbufferNormal = *(Vec3*)gbufferPixel;
+
+            Vec3 worldSpacePixelPos = rayPos + rayDir * gbufferPixel[3];
+
+            for (size_t sampleIndex = startSampleCount; sampleIndex < endSampleCount; ++sampleIndex)
+            {
+                Vec3 sphereSample = Sample2DToSphereSample(points[sampleIndex]);
+                Vec3 hemisphereSample = sphereSample * (Dot(gbufferNormal, sphereSample) >= 0.0f ? 1.0f : -1.0f); // TODO: i don't think this is correct. eg reflecting golden ratio on a circle didn't preserve the proerties!!
+
+                Vec3 worldSpaceSampleOffset = hemisphereSample * c_AORadius;
+
+                Vec3 worldSpaceSamplePosition = worldSpacePixelPos + worldSpaceSampleOffset;
+
+                Vec3 screenSpaceSamplePosition = ProjectPoint(viewProjMtx, worldSpaceSamplePosition);
+
+                // convert xy from [-1,1] to [0,1] uv then to pixel location
+                Vec2 pixelLocation = { screenSpaceSamplePosition[0], -screenSpaceSamplePosition[1] };
+                pixelLocation = pixelLocation * 0.5f + 0.5f;
+                pixelLocation *= Vec2{ float(image.m_width), float(image.m_height) };
+
+                // TODO: should we bilinear interpolate? probably not but ....
+                int sampleX = int(pixelLocation[0] + 0.5f);
+                int sampleY = int(pixelLocation[1] + 0.5f);
+
+                if (sampleX < 0)
+                    sampleX = 0;
+                else if (sampleX > image.m_width - 1)
+                    sampleX = image.m_width - 1;
+
+                if (sampleY < 0)
+                    sampleY = 0;
+                else if (sampleY > image.m_height - 1)
+                    sampleY = image.m_height - 1;
+
+                float sampleDepth = gbuffer.m_pixels[(sampleY * image.m_width + sampleX) * 4 + 3];
+
+                bool occluded = sampleDepth < gbufferPixel[3];
+                float AOValue = occluded ? 0.0f : 1.0f;
+
+                // TODO: consider occluded if it's occluded and the depth isn't too large. The rest of the stuff from the tutorial too
+
+                float lerpAmount = 1.0f / float(sampleIndex + 1);
+
+                pixel[0] = Lerp(pixel[0], AOValue, lerpAmount);
+                pixel[1] = pixel[0];
+                pixel[2] = pixel[0];
+                pixel[3] = 1.0f;
+
+                // TODO: get current pixel in world space. Add the world space sample offset. convert that world space back to uv space and sample gbuffer.
+
+                // TODO: continue! need to find what pixel the sample is at, read the depth and see if that depth is closer or farther than the sample depth.
+            }
+
+            gbufferPixel += 4;
+            pixel += 4;
+        }
+    }
+
+
+
+
+    /*
+    vec3 rvec = texture(uTexRandom, vTexcoord * uNoiseScale).xyz * 2.0 - 1.0;
+    vec3 tangent = normalize(rvec - normal * dot(rvec, normal));
+    vec3 bitangent = cross(normal, tangent);
+    mat3 tbn = mat3(tangent, bitangent, normal);
+    */
+
+    // TODO: i think we need a full tangent basis to be able to do the normal oriented sampling. need a second gbuffer with tangents i guess. calculate them from uv's?
 
     // TODO: SSAO
 }
