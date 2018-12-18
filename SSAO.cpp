@@ -933,10 +933,6 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
                 pixel[1] = pixel[0];
                 pixel[2] = pixel[0];
                 pixel[3] = 1.0f;
-
-                // TODO: get current pixel in world space. Add the world space sample offset. convert that world space back to uv space and sample gbuffer.
-
-                // TODO: continue! need to find what pixel the sample is at, read the depth and see if that depth is closer or farther than the sample depth.
             }
 
             gbufferPixel += 4;
@@ -944,17 +940,5 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
         }
     }
 
-
-
-
-    /*
-    vec3 rvec = texture(uTexRandom, vTexcoord * uNoiseScale).xyz * 2.0 - 1.0;
-    vec3 tangent = normalize(rvec - normal * dot(rvec, normal));
-    vec3 bitangent = cross(normal, tangent);
-    mat3 tbn = mat3(tangent, bitangent, normal);
-    */
-
     // TODO: i think we need a full tangent basis to be able to do the normal oriented sampling. need a second gbuffer with tangents i guess. calculate them from uv's?
-
-    // TODO: SSAO
 }
