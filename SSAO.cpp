@@ -343,6 +343,15 @@ static inline Vec3 operator - (const Vec3& a, const Vec3& b)
     };
 }
 
+static inline Vec2 operator - (const Vec2& a, const Vec2& b)
+{
+    return
+    {
+        a[0] - b[0],
+        a[1] - b[1],
+    };
+}
+
 struct Sphere
 {
     int id;
@@ -377,6 +386,27 @@ struct RayHitInfo
 
 static bool g_initialized = false;
 
+static Vec3 CalculateTangent(const Vec3& APos, const Vec3& BPos, const Vec3& CPos, const Vec2& AUV, const Vec2& BUV, const Vec2& CUV)
+{
+    // TODO: c and b were flipped in this code regionally for both position and uv. keep it in mind if tangent is wrong! :P
+
+    Vec3 acPos = CPos - APos;
+    Vec3 abPos = BPos - APos;
+
+    Vec2 acUV = CUV - AUV;
+    Vec2 abUV = BUV - AUV;
+
+    float f = 1.0f / (abUV[0] * acUV[1] - acUV[0] * abUV[1]);
+
+    Vec3 tangent;
+    tangent[0] = f * (acUV[1] * abPos[0] - abUV[1] * acPos[0]);
+    tangent[1] = f * (acUV[1] * abPos[1] - abUV[1] * acPos[1]);
+    tangent[2] = f * (acUV[1] * abPos[2] - abUV[1] * acPos[2]);
+    tangent = Normalize(tangent);
+
+    return tangent;
+}
+
 static void Initialize()
 {
     g_initialized = true;
@@ -403,6 +433,10 @@ static void Initialize()
             Vec3& a = *(Vec3*)&attrib.vertices[indexA.vertex_index * 3];
             Vec3& b = *(Vec3*)&attrib.vertices[indexB.vertex_index * 3];
             Vec3& c = *(Vec3*)&attrib.vertices[indexC.vertex_index * 3];
+
+            Vec2& aUV = *(Vec2*)&attrib.texcoords[indexA.texcoord_index * 2];
+            Vec2& bUV = *(Vec2*)&attrib.texcoords[indexB.texcoord_index * 2];
+            Vec2& cUV = *(Vec2*)&attrib.texcoords[indexC.texcoord_index * 2];
 
             if (firstVert)
             {
@@ -437,6 +471,7 @@ static void Initialize()
             Vec3 AC = triangle.C - triangle.A;
 
             triangle.Normal = Normalize(Cross(AB, AC));
+            triangle.Tangent = CalculateTangent(a, b, c, aUV, bUV, cUV);
             triangle.id = ++g_nextId;
 
             s_Triangles.push_back(triangle);
