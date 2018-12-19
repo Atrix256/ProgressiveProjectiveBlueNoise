@@ -8,7 +8,7 @@ static const char* objFileName = "assets/teapot.obj";
 //static const char* objFileName = "assets/dragon.obj";
 //static const char* objFileName = "assets/erato.obj";
 
-static ImageFloat g_gbuffer;
+static SSAOGBuffer g_gbuffer;
 
 // Define a vector as an array of floats
 template<size_t N>
@@ -381,6 +381,7 @@ struct RayHitInfo
     float time = FLT_MAX;
     Vec3 position = { 0.0f, 0.0f, 0.0f };
     Vec3 normal = { 0.0f, 0.0f, 0.0f };
+    Vec3 tangent = { 0.0f, 0.0f, 0.0f };
     int id = -1;
 };
 
@@ -417,7 +418,7 @@ static void Initialize()
 
     std::string warn;
     std::string err;
-    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, objFileName, nullptr, true);
+    bool ret = true;// tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, objFileName, nullptr, true);
 
     bool firstVert = true;
     for (const auto& shape : shapes)
@@ -668,6 +669,7 @@ static inline bool RayIntersects(const Vec3& rayPos, const Vec3& rayDir, const T
     info.time = t;
     info.position = rayPos + rayDir * t;
     info.normal = normal;
+    info.tangent = triangle.Tangent;
     info.id = triangle.id;
     return true;
 }
@@ -718,7 +720,6 @@ static inline bool RayIntersects(const Vec3& rayPos, const Vec3& rayDir, const S
     return true;
 }
 
-template <bool FIRST_HIT_EXITS>
 static void RayIntersectScene(const Vec3& rayPos, const Vec3& rayDir, RayHitInfo& info)
 {
     if (!RayIntersectsBox(rayPos, rayDir, s_sceneMin, s_sceneMax))
@@ -726,24 +727,26 @@ static void RayIntersectScene(const Vec3& rayPos, const Vec3& rayDir, RayHitInfo
 
     info.time = FLT_MAX;
     for (size_t i = 0; i < s_Triangles.size(); ++i)
-    {
         RayIntersects(rayPos, rayDir, s_Triangles[i], info);
-        if (FIRST_HIT_EXITS && info.time != FLT_MAX)
-            return;
-    }
 }
 
-static void SamplePixelGBuffer(float* pixel, const Vec3& rayPos, const Vec3& rayDir)
+static void SamplePixelGBuffer(SSAOGBufferPixel* pixel, const Vec3& rayPos, const Vec3& rayDir)
 {
-    RayHitInfo initialHitInfo;
-    initialHitInfo.normal[0] = 0.0f;
-    initialHitInfo.normal[1] = 0.0f;
-    initialHitInfo.normal[2] = 0.0f;
-    RayIntersectScene<false>(rayPos, rayDir, initialHitInfo);
-    pixel[0] = initialHitInfo.normal[0];
-    pixel[1] = initialHitInfo.normal[1];
-    pixel[2] = initialHitInfo.normal[2];
-    pixel[3] = initialHitInfo.time;
+    RayHitInfo hitInfo;
+    hitInfo.normal[0] = 0.0f;
+    hitInfo.normal[1] = 0.0f;
+    hitInfo.normal[2] = 0.0f;
+    hitInfo.tangent[0] = 0.0f;
+    hitInfo.tangent[1] = 0.0f;
+    hitInfo.tangent[2] = 0.0f;
+    RayIntersectScene(rayPos, rayDir, hitInfo);
+
+    for (int i = 0; i < 3; ++i)
+    {
+        pixel->normal[i] = hitInfo.normal[i];
+        pixel->tangent[i] = hitInfo.tangent[i];
+    }
+    pixel->depth = hitInfo.time;
 }
 
 struct MakeGBufferParams
@@ -776,8 +779,8 @@ inline void GetRayForPixel(const Mtx44& viewProjMtxInv, int x, int y, int width,
 
 void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& buffer)
 {
-    buffer.resize(sizeof(float)*params.width*params.width * 4);
-    float* pixels = (float*)buffer.data();
+    buffer.resize(sizeof(SSAOGBufferPixel)*params.width*params.width);
+    SSAOGBufferPixel* pixels = (SSAOGBufferPixel*)buffer.data();
 
     const Mtx44& viewProjMtx = params.viewProjMtx;
     const Mtx44 viewProjMtxInv = InvertMatrix(viewProjMtx);
@@ -802,7 +805,7 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
                 if (reportProgress)
                     printf("\rSSAO gbuffer: %i%%", int(100.0f * float(y) / float(params.height)));
 
-                float* pixel = &pixels[y*params.width * 4];
+                SSAOGBufferPixel* pixel = &pixels[y*params.width];
 
                 // raytrace every pixel / frequency in this row
                 for (int x = 0; x < params.width; ++x)
@@ -812,7 +815,7 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
                     GetRayForPixel(viewProjMtxInv, x, y, params.width, params.height, rayPos, rayDir);
 
                     SamplePixelGBuffer(pixel, rayPos, rayDir);
-                    pixel += 4;
+                    pixel++;
                 }
 
                 // go to the next row
@@ -829,19 +832,19 @@ void MakeGBuffer(const MakeGBufferParams& params, std::vector<unsigned char>& bu
         t.join();
 }
 
-void SSAOTestGetGBuffer(ImageFloat& gbuffer, Mtx44& viewProjMtx)
+void SSAOTestGetGBuffer(SSAOGBuffer& gbuffer, Mtx44& viewProjMtx, int width, int height)
 {
     if (!g_initialized)
         Initialize();
 
     // make the view and projection matrices
-    float aspectRatio = float(gbuffer.m_width) / float(gbuffer.m_height);
+    float aspectRatio = float(width) / float(height);
     Mtx44 projMtx = ProjectionMatrix(DegreesToRadians(40.0f), aspectRatio, 0.1f, 100.0f);
     Mtx44 viewMtx = TranslationMatrix({ 0.0f, 0.0f, 5.0f });
     viewProjMtx = Multiply(projMtx, viewMtx);
 
-    // if the gbuffer already exists, use it
-    if (g_gbuffer.m_width != 0)
+    // if the gbuffer already exists, copy it
+    if (g_gbuffer.size() > 0)
     {
         gbuffer = g_gbuffer;
         return;
@@ -849,8 +852,8 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer, Mtx44& viewProjMtx)
 
     // get the data from the cache, or make it
     MakeGBufferParams params;
-    params.width = gbuffer.m_width;
-    params.height = gbuffer.m_height;
+    params.width = width;
+    params.height = height;
     params.viewProjMtx = viewProjMtx;
     // strcpy_s puts "debug" values in the buffer past the null terminator in debug so makes the hash different. WTF. So, using memcpy instead
     memcpy(params.objFileName, objFileName, strlen(objFileName) + 1); 
@@ -858,9 +861,10 @@ void SSAOTestGetGBuffer(ImageFloat& gbuffer, Mtx44& viewProjMtx)
     MakeDataCached(MakeGBuffer, params, buffer);
 
     // use the data to make the gbuffer
-    memcpy(gbuffer.m_pixels.data(), buffer.data(), buffer.size());
+    gbuffer.resize(width*height);
+    memcpy(gbuffer.data(), buffer.data(), buffer.size());
 
-    // store this off to use again
+    // store a copy of this off to use again
     g_gbuffer = gbuffer;
 }
 
@@ -889,29 +893,29 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
 
     // get the gbuffer
     Mtx44 viewProjMtx, viewProjMtxInv;
-    ImageFloat gbuffer(image.m_width, image.m_height);
-    SSAOTestGetGBuffer(gbuffer, viewProjMtx);
+    SSAOGBuffer gbuffer;
+    SSAOTestGetGBuffer(gbuffer, viewProjMtx, image.m_width, image.m_height);
     viewProjMtxInv = InvertMatrix(viewProjMtx);
 
     // TODO: pass from caller?
     const float c_AORadius = 0.1f;
 
     // Do the SSAO
-    const float* gbufferPixel = gbuffer.m_pixels.data();
+    const SSAOGBufferPixel* gbufferPixel = gbuffer.data();
     float* pixel = image.m_pixels.data();
     for (int y = 0; y < image.m_height; ++y)
     {
         for (int x = 0; x < image.m_width; ++x)
         {
             // skip pixels that were missed by rays
-            if (gbufferPixel[3] == FLT_MAX)
+            if (gbufferPixel->depth == FLT_MAX)
             {
                 pixel[0] = 0.0f;
                 pixel[1] = 0.0f;
                 pixel[2] = 0.0f;
                 pixel[3] = 1.0f;
 
-                gbufferPixel += 4;
+                gbufferPixel++;
                 pixel += 4;
 
                 continue;
@@ -921,9 +925,9 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
             Vec3 rayDir;
             GetRayForPixel(viewProjMtxInv, x, y, image.m_width, image.m_height, rayPos, rayDir);
 
-            Vec3& gbufferNormal = *(Vec3*)gbufferPixel;
+            Vec3& gbufferNormal = *(Vec3*)&gbufferPixel->normal;
 
-            Vec3 worldSpacePixelPos = rayPos + rayDir * gbufferPixel[3];
+            Vec3 worldSpacePixelPos = rayPos + rayDir * gbufferPixel->depth;
 
             for (size_t sampleIndex = startSampleCount; sampleIndex < endSampleCount; ++sampleIndex)
             {
@@ -955,9 +959,9 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
                 else if (sampleY > image.m_height - 1)
                     sampleY = image.m_height - 1;
 
-                float sampleDepth = gbuffer.m_pixels[(sampleY * image.m_width + sampleX) * 4 + 3];
+                float sampleDepth = gbuffer[sampleY * image.m_width + sampleX].depth;
 
-                bool occluded = sampleDepth < gbufferPixel[3];
+                bool occluded = sampleDepth < gbufferPixel->depth;
                 float AOValue = occluded ? 0.0f : 1.0f;
 
                 // TODO: consider occluded if it's occluded and the depth isn't too large. The rest of the stuff from the tutorial too
@@ -970,7 +974,7 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
                 pixel[3] = 1.0f;
             }
 
-            gbufferPixel += 4;
+            gbufferPixel++;
             pixel += 4;
         }
     }

@@ -8,14 +8,15 @@ typedef std::array<float, 3> Vec3;
 typedef std::array<float, 4> Vec4;
 typedef std::array<Vec4, 4> Mtx44;
 
-struct SSAOGBuffer
+struct SSAOGBufferPixel
 {
-    int width;
-    int height;
-    std::vector<Vec4> normal_depth;
-    std::vector<Vec4> tangent_unused;
+    float normal[3];
+    float tangent[3];
+    float depth;
 };
 
-void SSAOTestGetGBuffer(ImageFloat& gbuffer, Mtx44& viewProjMtx);
+typedef std::vector<SSAOGBufferPixel> SSAOGBuffer;
+
+void SSAOTestGetGBuffer(SSAOGBuffer& gbuffer, Mtx44& viewProjMtx, int width, int height);
 
 void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount, const std::vector<Vec2>& points);

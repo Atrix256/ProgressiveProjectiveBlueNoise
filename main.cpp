@@ -107,6 +107,26 @@ static const SamplingPattern g_samplingPatterns[] =
 };
 static const size_t c_numSamplingPatterns = sizeof(g_samplingPatterns) / sizeof(g_samplingPatterns[0]);
 
+static inline Vec3 operator * (const Vec3& v, float f)
+{
+    return
+    {
+        v[0] * f,
+        v[1] * f,
+        v[2] * f,
+    };
+}
+
+static inline Vec3 operator + (const Vec3& v, float f)
+{
+    return
+    {
+        v[0] + f,
+        v[1] + f,
+        v[2] + f,
+    };
+}
+
 struct Log
 {
     std::array<std::vector<std::string>, 5> logs;
@@ -1238,42 +1258,69 @@ void DoTestSSAO(const std::vector<Vec2>& points, const char* label)
     {
         firstTime = false;
 
-        ImageFloat gbuffer(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
-        Image result;
-
+        SSAOGBuffer gbuffer;
         Mtx44 viewProjMtx;
-        SSAOTestGetGBuffer(gbuffer, viewProjMtx);
+        SSAOTestGetGBuffer(gbuffer, viewProjMtx, RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
 
-        ImageFloat gbufferToSave = gbuffer;
+        ImageFloat gbufferNormal(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
+        ImageFloat gbufferTangent(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
+        ImageFloat gbufferDepth(RAYTRACE_IMAGE_SIZE(), RAYTRACE_IMAGE_SIZE());
+
         float depthMin = 0.0f;
         float depthMax = 0.0f;
         bool hasMinMax = false;
-        for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
+        for (size_t i = 0; i < gbufferNormal.m_width * gbufferNormal.m_height; ++i)
         {
-            float* pixel = &gbufferToSave.m_pixels[i * 4];
-            if (pixel[3] == FLT_MAX)
+            const SSAOGBufferPixel& gbufferPixel = gbuffer[i];
+
+            if (gbufferPixel.depth == FLT_MAX)
                 continue;
 
-            if (!hasMinMax || pixel[3] < depthMin)
-                depthMin = pixel[3];
-            if (!hasMinMax || pixel[3] > depthMax)
-                depthMax = pixel[3];
+            if (!hasMinMax || gbufferPixel.depth < depthMin)
+                depthMin = gbufferPixel.depth;
+            if (!hasMinMax || gbufferPixel.depth > depthMax)
+                depthMax = gbufferPixel.depth;
 
             hasMinMax = true;
         }
 
-        for (size_t i = 0; i < gbufferToSave.m_width * gbufferToSave.m_height; ++i)
+        for (size_t i = 0; i < gbufferNormal.m_width * gbufferNormal.m_height; ++i)
         {
-            float* pixel = &gbufferToSave.m_pixels[i * 4];
-            pixel[0] = pixel[0] * 0.5f + 0.5f;
-            pixel[1] = pixel[1] * 0.5f + 0.5f;
-            pixel[2] = pixel[2] * 0.5f + 0.5f;
-            pixel[3] = (pixel[3] == FLT_MAX) ? 1.0f : (pixel[3] - depthMin) / (depthMax - depthMin);
+            const SSAOGBufferPixel& gbufferPixel = gbuffer[i];
+
+            Vec4& outNormal = *(Vec4*)&gbufferNormal.m_pixels[i * 4];
+            Vec4& outTangent = *(Vec4*)&gbufferTangent.m_pixels[i * 4];
+            Vec4& outDepth = *(Vec4*)&gbufferDepth.m_pixels[i * 4];
+
+            Vec3 normal = *((Vec3*)&gbufferPixel.normal) * 0.5f + 0.5f;
+            outNormal[0] = normal[0];
+            outNormal[1] = normal[1];
+            outNormal[2] = normal[2];
+            outNormal[3] = 1.0f;
+
+            Vec3 tangent = *((Vec3*)&gbufferPixel.tangent) * 0.5f + 0.5f;
+            outTangent[0] = tangent[0];
+            outTangent[1] = tangent[1];
+            outTangent[2] = tangent[2];
+            outTangent[3] = 1.0f;
+
+            float depth = (gbufferPixel.depth == FLT_MAX) ? 1.0f : (gbufferPixel.depth - depthMin) / (depthMax - depthMin);
+            outDepth[0] = depth;
+            outDepth[1] = depth;
+            outDepth[2] = depth;
+            outDepth[3] = 1.0f;
         }
 
-        ImageFloatToImage(gbufferToSave, result);
-        SaveImage("out/SSAO/__gbuffer.png", result);
-        SaveImage("out/SSAO_correlated/__gbuffer.png", result);
+        Image resultNormal, resultTangent, resultDepth;
+        ImageFloatToImage(gbufferNormal, resultNormal);
+        ImageFloatToImage(gbufferTangent, resultTangent);
+        ImageFloatToImage(gbufferDepth, resultDepth);
+        SaveImage("out/SSAO/__normals.png", resultNormal);
+        SaveImage("out/SSAO_correlated/__normals.png", resultNormal);
+        SaveImage("out/SSAO/__tangents.png", resultTangent);
+        SaveImage("out/SSAO_correlated/__tangents.png", resultTangent);
+        SaveImage("out/SSAO/__depth.png", resultDepth);
+        SaveImage("out/SSAO_correlated/__depth.png", resultDepth);
     }
 
     // Do SSAO tests
@@ -1959,8 +2006,10 @@ int main(int argc, char **argv)
 /*
 TODO:
 
-* maybe have blue noise / projective blue noise be stored in cache since they take a while to make?
+* tangents don't seem quite right in the gbuffer image outputs
+* after tangents are working, use them in the ssao thing. it might make the ssao look more like you'd expect.
 * make a ground truth ssao that does all the logic but with a bunch of white noise points
+
 
 1) Do SSAO -> see how R2 looks.
 2) see how your projective blue noise looks / works. Compare vs projective blue noise paper
