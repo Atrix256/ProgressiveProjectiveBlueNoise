@@ -3,6 +3,8 @@
 #include "tiny_obj_loader.h"
 #include "cache.h"
 
+static inline Vec3 Cross(const Vec3& a, const Vec3& b);
+
 static const char* objFileName = "assets/teapot.obj";
 //static const char* objFileName = "assets/bunny.obj";
 //static const char* objFileName = "assets/dragon.obj";
@@ -174,6 +176,18 @@ static Mtx44 TranslationMatrix(const Vec3& translation)
     return ret;
 }
 
+static Mtx44 TBNMatrix(const Vec3& tangent, const Vec3& normal)
+{
+    Vec3 bitangent = Cross(tangent, normal);
+
+    Mtx44 ret;
+    ret[0] = { tangent[0], tangent[1], tangent[2], 0.0f };
+    ret[1] = { bitangent[0], bitangent[1], bitangent[2], 0.0f };
+    ret[2] = { normal[0], normal[1], normal[2], 0.0f };
+    ret[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    return Transpose(ret);
+}
+
 Vec4 Multiply(const Mtx44& mtx, const Vec4& vec)
 {
     Vec4 ret;
@@ -206,6 +220,30 @@ Vec3 ProjectPoint(const Mtx44& mtx, const Vec3& p)
     ret[0] = point[0] / point[3];
     ret[1] = point[1] / point[3];
     ret[2] = point[2] / point[3];
+    return ret;
+}
+
+Vec3 TransformPoint(const Mtx44& mtx, const Vec3& p)
+{
+    Vec4 point = { p[0], p[1], p[2], 1.0f };
+    point = Multiply(mtx, point);
+
+    Vec3 ret;
+    ret[0] = point[0];
+    ret[1] = point[1];
+    ret[2] = point[2];
+    return ret;
+}
+
+Vec3 TransformVector(const Mtx44& mtx, const Vec3& p)
+{
+    Vec4 point = { p[0], p[1], p[2], 0.0f };
+    point = Multiply(mtx, point);
+
+    Vec3 ret;
+    ret[0] = point[0];
+    ret[1] = point[1];
+    ret[2] = point[2];
     return ret;
 }
 
@@ -936,15 +974,22 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
             GetRayForPixel(viewProjMtxInv, x, y, image.m_width, image.m_height, rayPos, rayDir);
 
             Vec3& gbufferNormal = *(Vec3*)&gbufferPixel->normal;
+            Vec3& gbufferTangent = *(Vec3*)&gbufferPixel->tangent;
 
             Vec3 worldSpacePixelPos = rayPos + rayDir * gbufferPixel->depth;
+
+            Mtx44 TBN = TBNMatrix(gbufferTangent, gbufferNormal);
 
             for (size_t sampleIndex = startSampleCount; sampleIndex < endSampleCount; ++sampleIndex)
             {
                 Vec3 sphereSample = Sample2DToSphereSample(points[sampleIndex]);
-                Vec3 hemisphereSample = sphereSample * (Dot(gbufferNormal, sphereSample) >= 0.0f ? 1.0f : -1.0f); // TODO: i don't think this is correct. eg reflecting golden ratio on a circle didn't preserve the proerties!!
 
-                Vec3 worldSpaceSampleOffset = hemisphereSample * c_AORadius;
+                Vec3 hemisphereSample = sphereSample;
+                hemisphereSample[2] = abs(hemisphereSample[2]);  // TODO: i don't think this is correct. eg reflecting golden ratio on a circle didn't preserve the proerties!!  Need to make Sample2DToHemisphereSample
+
+                Vec3 tangentSpaceHemisphereSample = TransformVector(TBN, hemisphereSample);
+
+                Vec3 worldSpaceSampleOffset = tangentSpaceHemisphereSample * c_AORadius;
 
                 Vec3 worldSpaceSamplePosition = worldSpacePixelPos + worldSpaceSampleOffset;
 
