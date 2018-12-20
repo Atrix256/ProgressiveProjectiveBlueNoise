@@ -2006,7 +2006,6 @@ int main(int argc, char **argv)
 /*
 TODO:
 
-* tangents don't seem quite right in the gbuffer image outputs
 * after tangents are working, use them in the ssao thing. it might make the ssao look more like you'd expect.
 * make a ground truth ssao that does all the logic but with a bunch of white noise points
 

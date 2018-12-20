@@ -418,7 +418,7 @@ static void Initialize()
 
     std::string warn;
     std::string err;
-    bool ret = true;// tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, objFileName, nullptr, true);
+    bool ret = tinyobj::LoadObj(&attrib, &shapes, &materials, &warn, &err, objFileName, nullptr, true);
 
     bool firstVert = true;
     for (const auto& shape : shapes)
@@ -504,6 +504,7 @@ static void Initialize()
         triangle.B = Vec3{ -1.0f, -1.0f,  1.0f };
         triangle.C = Vec3{ -1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ 1.0f, 0.0f, 0.0f };
+        triangle.Tangent = Vec3{0.0f, 1.0f, 0.0f};
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -511,6 +512,7 @@ static void Initialize()
         triangle.B = Vec3{ -1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ -1.0f,  1.0f, -1.0f };
         triangle.Normal = Vec3{ 1.0f, 0.0f, 0.0f };
+        triangle.Tangent = Vec3{ 0.0f, 1.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
@@ -521,6 +523,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f, -1.0f,  1.0f };
         triangle.C = Vec3{  1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ -1.0f, 0.0f, 0.0f };
+        triangle.Tangent = Vec3{ 0.0f, -1.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -528,6 +531,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  1.0f, -1.0f };
         triangle.Normal = Vec3{ -1.0f, 0.0f, 0.0f };
+        triangle.Tangent = Vec3{ 0.0f, -1.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
@@ -538,6 +542,7 @@ static void Initialize()
         triangle.B = Vec3{-1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ 0.0f, -1.0f, 0.0f };
+        triangle.Tangent = Vec3{ 0.0f, 0.0f, -1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -545,6 +550,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  1.0f, -1.0f };
         triangle.Normal = Vec3{ 0.0f, -1.0f, 0.0f };
+        triangle.Tangent = Vec3{ 0.0f, 0.0f, -1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
@@ -555,6 +561,7 @@ static void Initialize()
         triangle.B = Vec3{ -1.0f,  -1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  -1.0f,  1.0f };
         triangle.Normal = Vec3{ 0.0f, 1.0f, 0.0f };
+        triangle.Tangent = Vec3{ 0.0f, 0.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -562,6 +569,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f,  -1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  -1.0f, -1.0f };
         triangle.Normal = Vec3{ 0.0f, 1.0f, 0.0f };
+        triangle.Tangent = Vec3{ 0.0f, 0.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
@@ -572,6 +580,7 @@ static void Initialize()
         triangle.B = Vec3{ -1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ 0.0f, 0.0f, -1.0f };
+        triangle.Tangent = Vec3{ -1.0f, 0.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -579,6 +588,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f, -1.0f, 1.0f };
         triangle.Normal = Vec3{ 0.0f, 0.0f, -1.0f };
+        triangle.Tangent = Vec3{ -1.0f, 0.0f, 0.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
