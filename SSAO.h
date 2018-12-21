@@ -11,7 +11,7 @@ typedef std::array<Vec4, 4> Mtx44;
 struct SSAOGBufferPixel
 {
     float normal[3];
-    float tangent[3];
+    float tangent[4];
     float depth;
 };
 

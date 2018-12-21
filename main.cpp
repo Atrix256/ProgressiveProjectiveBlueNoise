@@ -2006,6 +2006,12 @@ int main(int argc, char **argv)
 /*
 TODO:
 
+* the bunny tangents are fubar.  Maybe it's because you aren't doing the per vertex thing like the other code is.
+ * https://gamedev.stackexchange.com/questions/68612/how-to-compute-tangent-and-bitangent-vectors
+ * for each face: calculate and add to the vertices
+ * then calculate a tangent per vert.
+ * but you need a tangent per face, what are you gonna do?
+
 * after tangents are working, use them in the ssao thing. it might make the ssao look more like you'd expect.
 * make a ground truth ssao that does all the logic but with a bunch of white noise points
 

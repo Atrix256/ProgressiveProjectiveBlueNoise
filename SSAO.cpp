@@ -5,8 +5,8 @@
 
 static inline Vec3 Cross(const Vec3& a, const Vec3& b);
 
-static const char* objFileName = "assets/teapot.obj";
-//static const char* objFileName = "assets/bunny.obj";
+//static const char* objFileName = "assets/teapot.obj";
+static const char* objFileName = "assets/bunny.obj";
 //static const char* objFileName = "assets/dragon.obj";
 //static const char* objFileName = "assets/erato.obj";
 
@@ -166,6 +166,45 @@ static Mtx44 ScaleMatrix(const Vec3& scale)
     return ret;
 }
 
+static Mtx44 RotationMatrixX(float angle)
+{
+    float cosTheta = cos(angle);
+    float sinTheta = sin(angle);
+
+    Mtx44 ret;
+    ret[0] = { 1.0f, 0.0f, 0.0f, 0.0f };
+    ret[1] = { 0.0f, cosTheta, -sinTheta, 0.0f };
+    ret[2] = { 0.0f, sinTheta, cosTheta, 0.0f };
+    ret[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    return Transpose(ret);
+}
+
+static Mtx44 RotationMatrixY(float angle)
+{
+    float cosTheta = cos(angle);
+    float sinTheta = sin(angle);
+
+    Mtx44 ret;
+    ret[0] = { cosTheta, 0.0f, sinTheta, 0.0f };
+    ret[1] = { 0.0f, 1.0f, 0.0f, 0.0f };
+    ret[2] = { -sinTheta, 0.0f, cosTheta, 0.0f };
+    ret[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    return Transpose(ret);
+}
+
+static Mtx44 RotationMatrixZ(float angle)
+{
+    float cosTheta = cos(angle);
+    float sinTheta = sin(angle);
+
+    Mtx44 ret;
+    ret[0] = { cosTheta, -sinTheta, 0.0f, 0.0f };
+    ret[1] = { sinTheta, cosTheta, 0.0f, 0.0f };
+    ret[2] = { 0.0f, 0.0f, 1.0f, 0.0f };
+    ret[3] = { 0.0f, 0.0f, 0.0f, 1.0f };
+    return Transpose(ret);
+}
+
 static Mtx44 TranslationMatrix(const Vec3& translation)
 {
     Mtx44 ret;
@@ -176,9 +215,27 @@ static Mtx44 TranslationMatrix(const Vec3& translation)
     return ret;
 }
 
-static Mtx44 TBNMatrix(const Vec3& tangent, const Vec3& normal)
+static inline float LengthSQ(const Vec3& v)
 {
-    Vec3 bitangent = Cross(tangent, normal);
+    return v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
+}
+
+static inline Vec3 Normalize(const Vec3& v)
+{
+    float len = sqrtf(LengthSQ(v));
+    Vec3 ret;
+    ret[0] = v[0] / len;
+    ret[1] = v[1] / len;
+    ret[2] = v[2] / len;
+    return ret;
+}
+
+static Mtx44 TBNMatrix(const Vec4& tangent, const Vec3& normal)
+{
+    Vec3 bitangent = Normalize(Cross(Vec3{ tangent[0], tangent[1], tangent[2] }, normal));
+    bitangent[0] *= tangent[3];
+    bitangent[1] *= tangent[3];
+    bitangent[2] *= tangent[3];
 
     Mtx44 ret;
     ret[0] = { tangent[0], tangent[1], tangent[2], 0.0f };
@@ -255,21 +312,6 @@ static Vec3 RandomUnitVector(float r1, float r2)
     float x = r * cos(a);
     float y = r * sin(a);
     return Vec3{ x, y, z };
-}
-
-static inline float LengthSQ(const Vec3& v)
-{
-    return v[0] * v[0] + v[1] * v[1] + v[2] * v[2];
-}
-
-static inline Vec3 Normalize(const Vec3& v)
-{
-    float len = sqrtf(LengthSQ(v));
-    Vec3 ret;
-    ret[0] = v[0] / len;
-    ret[1] = v[1] / len;
-    ret[2] = v[2] / len;
-    return ret;
 }
 
 static inline Vec3 Cross(const Vec3& a, const Vec3& b)
@@ -405,7 +447,7 @@ struct Triangle
     Vec3 B;
     Vec3 C;
     Vec3 Normal;
-    Vec3 Tangent;
+    Vec4 Tangent;
 };
 
 static int g_nextId = 0;
@@ -419,31 +461,64 @@ struct RayHitInfo
     float time = FLT_MAX;
     Vec3 position = { 0.0f, 0.0f, 0.0f };
     Vec3 normal = { 0.0f, 0.0f, 0.0f };
-    Vec3 tangent = { 0.0f, 0.0f, 0.0f };
+    Vec4 tangent = { 0.0f, 0.0f, 0.0f };
     int id = -1;
 };
 
 static bool g_initialized = false;
 
-static Vec3 CalculateTangent(const Vec3& APos, const Vec3& BPos, const Vec3& CPos, const Vec2& AUV, const Vec2& BUV, const Vec2& CUV)
+static Vec4 CalculateTangent(const Vec3& Normal, const Vec3& APos, const Vec3& BPos, const Vec3& CPos, const Vec2& AUV, const Vec2& BUV, const Vec2& CUV)
 {
-    // TODO: c and b were flipped in this code regionally for both position and uv. keep it in mind if tangent is wrong! :P
+    float v1x = APos[0];
+    float v1y = APos[1];
+    float v1z = APos[2];
 
-    Vec3 acPos = CPos - APos;
-    Vec3 abPos = BPos - APos;
+    float v2x = BPos[0];
+    float v2y = BPos[1];
+    float v2z = BPos[2];
 
-    Vec2 acUV = CUV - AUV;
-    Vec2 abUV = BUV - AUV;
+    float v3x = CPos[0];
+    float v3y = CPos[1];
+    float v3z = CPos[2];
 
-    float f = 1.0f / (abUV[0] * acUV[1] - acUV[0] * abUV[1]);
+    float w1x = AUV[0];
+    float w1y = AUV[1];
 
-    Vec3 tangent;
-    tangent[0] = f * (acUV[1] * abPos[0] - abUV[1] * acPos[0]);
-    tangent[1] = f * (acUV[1] * abPos[1] - abUV[1] * acPos[1]);
-    tangent[2] = f * (acUV[1] * abPos[2] - abUV[1] * acPos[2]);
-    tangent = Normalize(tangent);
+    float w2x = BUV[0];
+    float w2y = BUV[1];
 
-    return tangent;
+    float w3x = CUV[0];
+    float w3y = CUV[1];
+
+    float x1 = v2x - v1x;
+    float x2 = v3x - v1x;
+    float y1 = v2y - v1y;
+    float y2 = v3y - v1y;
+    float z1 = v2z - v1z;
+    float z2 = v3z - v1z;
+
+    float s1 = w2x - w1x;
+    float s2 = w3x - w1x;
+    float t1 = w2y - w1y;
+    float t2 = w3y - w1y;
+
+    float r = 1.0F / (s1 * t2 - s2 * t1);
+    Vec3 sdir{ (t2 * x1 - t1 * x2) * r, (t2 * y1 - t1 * y2) * r,
+        (t2 * z1 - t1 * z2) * r };
+
+    Vec3 tdir{(s1 * x2 - s2 * x1) * r, (s1 * y2 - s2 * y1) * r,
+        (s1 * z2 - s2 * z1) * r};
+
+    const Vec3& n = Normal;
+    const Vec3& t = sdir;
+
+    // Gram-Schmidt orthogonalize
+    Vec3 tangent = Normalize(t - n * Dot(n, t));
+
+    // Calculate handedness
+    float handedness = (Dot(Cross(n, t), tdir) < 0.0F) ? -1.0F : 1.0F;
+
+    return Vec4{ tangent[0], tangent[1], tangent[2], handedness };
 }
 
 static void Initialize()
@@ -472,10 +547,6 @@ static void Initialize()
             Vec3& a = *(Vec3*)&attrib.vertices[indexA.vertex_index * 3];
             Vec3& b = *(Vec3*)&attrib.vertices[indexB.vertex_index * 3];
             Vec3& c = *(Vec3*)&attrib.vertices[indexC.vertex_index * 3];
-
-            Vec2& aUV = *(Vec2*)&attrib.texcoords[indexA.texcoord_index * 2];
-            Vec2& bUV = *(Vec2*)&attrib.texcoords[indexB.texcoord_index * 2];
-            Vec2& cUV = *(Vec2*)&attrib.texcoords[indexC.texcoord_index * 2];
 
             if (firstVert)
             {
@@ -510,7 +581,26 @@ static void Initialize()
             Vec3 AC = triangle.C - triangle.A;
 
             triangle.Normal = Normalize(Cross(AB, AC));
-            triangle.Tangent = CalculateTangent(a, b, c, aUV, bUV, cUV);
+
+            if (indexA.texcoord_index >= 0 && indexB.texcoord_index >= 0 && indexC.texcoord_index >= 0)
+            {
+                Vec2& aUV = *(Vec2*)&attrib.texcoords[indexA.texcoord_index * 2];
+                Vec2& bUV = *(Vec2*)&attrib.texcoords[indexB.texcoord_index * 2];
+                Vec2& cUV = *(Vec2*)&attrib.texcoords[indexC.texcoord_index * 2];
+                triangle.Tangent = CalculateTangent(triangle.Normal, a, b, c, aUV, bUV, cUV);
+            }
+            else
+            {
+                Vec3 tan;
+                if (triangle.Normal[1] < 0.9f)
+                    tan = Normalize(Cross(triangle.Normal, Vec3{ 0.0f, 1.0f, 0.0f }));
+                else
+                    tan = Normalize(Cross(triangle.Normal, Vec3{ 1.0f, 0.0f, 0.0f }));
+
+                triangle.Tangent = Vec4{ tan[0], tan[1], tan[2], 1.0f };
+            }
+            
+            
             triangle.id = ++g_nextId;
 
             s_Triangles.push_back(triangle);
@@ -526,11 +616,25 @@ static void Initialize()
     Vec3 center = (s_sceneMin + s_sceneMax) / 2.0f;
     float longestRadius = 0.5f * std::max(s_sceneMax[0] - s_sceneMin[0], std::max(s_sceneMax[1] - s_sceneMin[1], s_sceneMax[2] - s_sceneMin[2]));
     longestRadius *= 1.1f; // give some extra padding so things aren't right against the wall
+    Mtx44 rot = RotationMatrixY(DegreesToRadians(180.0f));
     for (auto& triangle : s_Triangles)
     {
         triangle.A = (triangle.A - center) / longestRadius;
         triangle.B = (triangle.B - center) / longestRadius;
         triangle.C = (triangle.C - center) / longestRadius;
+
+        // rotate the points 180 degrees on y axis because everything is pointing away from us
+        triangle.A = TransformPoint(rot, triangle.A);
+        triangle.B = TransformPoint(rot, triangle.B);
+        triangle.C = TransformPoint(rot, triangle.C);
+
+        triangle.Normal = TransformVector(rot, triangle.Normal);
+
+        Vec3 tan = Vec3{ triangle.Tangent[0], triangle.Tangent[1], triangle.Tangent[2] };
+        tan = TransformVector(rot, tan);
+        triangle.Tangent[0] = tan[0];
+        triangle.Tangent[1] = tan[1];
+        triangle.Tangent[2] = tan[2];
     }
 
     // add a box that is -1 to 1 on each axis, and the offset is added
@@ -542,7 +646,7 @@ static void Initialize()
         triangle.B = Vec3{ -1.0f, -1.0f,  1.0f };
         triangle.C = Vec3{ -1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ 1.0f, 0.0f, 0.0f };
-        triangle.Tangent = Vec3{0.0f, 1.0f, 0.0f};
+        triangle.Tangent = Vec4{0.0f, 1.0f, 0.0f, 1.0f};
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -550,7 +654,7 @@ static void Initialize()
         triangle.B = Vec3{ -1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ -1.0f,  1.0f, -1.0f };
         triangle.Normal = Vec3{ 1.0f, 0.0f, 0.0f };
-        triangle.Tangent = Vec3{ 0.0f, 1.0f, 0.0f };
+        triangle.Tangent = Vec4{ 0.0f, 1.0f, 0.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
@@ -561,7 +665,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f, -1.0f,  1.0f };
         triangle.C = Vec3{  1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ -1.0f, 0.0f, 0.0f };
-        triangle.Tangent = Vec3{ 0.0f, -1.0f, 0.0f };
+        triangle.Tangent = Vec4{ 0.0f, -1.0f, 0.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -569,7 +673,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  1.0f, -1.0f };
         triangle.Normal = Vec3{ -1.0f, 0.0f, 0.0f };
-        triangle.Tangent = Vec3{ 0.0f, -1.0f, 0.0f };
+        triangle.Tangent = Vec4{ 0.0f, -1.0f, 0.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
@@ -580,7 +684,7 @@ static void Initialize()
         triangle.B = Vec3{-1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ 0.0f, -1.0f, 0.0f };
-        triangle.Tangent = Vec3{ 0.0f, 0.0f, -1.0f };
+        triangle.Tangent = Vec4{ 0.0f, 0.0f, -1.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -588,7 +692,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  1.0f, -1.0f };
         triangle.Normal = Vec3{ 0.0f, -1.0f, 0.0f };
-        triangle.Tangent = Vec3{ 0.0f, 0.0f, -1.0f };
+        triangle.Tangent = Vec4{ 0.0f, 0.0f, -1.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
@@ -599,7 +703,7 @@ static void Initialize()
         triangle.B = Vec3{ -1.0f,  -1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  -1.0f,  1.0f };
         triangle.Normal = Vec3{ 0.0f, 1.0f, 0.0f };
-        triangle.Tangent = Vec3{ 0.0f, 0.0f, 1.0f };
+        triangle.Tangent = Vec4{ 0.0f, 0.0f, 1.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -607,7 +711,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f,  -1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  -1.0f, -1.0f };
         triangle.Normal = Vec3{ 0.0f, 1.0f, 0.0f };
-        triangle.Tangent = Vec3{ 0.0f, 0.0f, 1.0f };
+        triangle.Tangent = Vec4{ 0.0f, 0.0f, 1.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
@@ -618,7 +722,7 @@ static void Initialize()
         triangle.B = Vec3{ -1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.Normal = Vec3{ 0.0f, 0.0f, -1.0f };
-        triangle.Tangent = Vec3{ -1.0f, 0.0f, 0.0f };
+        triangle.Tangent = Vec4{ -1.0f, 0.0f, 0.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
 
@@ -626,7 +730,7 @@ static void Initialize()
         triangle.B = Vec3{ 1.0f,  1.0f,  1.0f };
         triangle.C = Vec3{ 1.0f, -1.0f, 1.0f };
         triangle.Normal = Vec3{ 0.0f, 0.0f, -1.0f };
-        triangle.Tangent = Vec3{ -1.0f, 0.0f, 0.0f };
+        triangle.Tangent = Vec4{ -1.0f, 0.0f, 0.0f, 1.0f };
         triangle.id = ++g_nextId;
         s_Triangles.push_back(triangle);
     }
@@ -787,6 +891,7 @@ static void SamplePixelGBuffer(SSAOGBufferPixel* pixel, const Vec3& rayPos, cons
     hitInfo.tangent[0] = 0.0f;
     hitInfo.tangent[1] = 0.0f;
     hitInfo.tangent[2] = 0.0f;
+    hitInfo.tangent[3] = 1.0f;
     RayIntersectScene(rayPos, rayDir, hitInfo);
 
     for (int i = 0; i < 3; ++i)
@@ -794,6 +899,7 @@ static void SamplePixelGBuffer(SSAOGBufferPixel* pixel, const Vec3& rayPos, cons
         pixel->normal[i] = hitInfo.normal[i];
         pixel->tangent[i] = hitInfo.tangent[i];
     }
+    pixel->tangent[3] = hitInfo.tangent[3];
     pixel->depth = hitInfo.time;
 }
 
@@ -974,7 +1080,7 @@ void SSAOTest(ImageFloat& image, size_t startSampleCount, size_t endSampleCount,
             GetRayForPixel(viewProjMtxInv, x, y, image.m_width, image.m_height, rayPos, rayDir);
 
             Vec3& gbufferNormal = *(Vec3*)&gbufferPixel->normal;
-            Vec3& gbufferTangent = *(Vec3*)&gbufferPixel->tangent;
+            Vec4& gbufferTangent = *(Vec4*)&gbufferPixel->tangent;
 
             Vec3 worldSpacePixelPos = rayPos + rayDir * gbufferPixel->depth;
 
